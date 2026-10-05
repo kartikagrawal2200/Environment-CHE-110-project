@@ -2292,3 +2292,53 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ==========================================================================
+   TOP (HERO) SECTION BACKGROUND — forest-to-digital illustration
+   Applies only to the top hero banner of every page (not other sections)
+   ========================================================================== */
+.inner-3d-hero {
+  padding-bottom: 190px !important;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0.72) 45%, rgba(255, 255, 255, 0) 75%),
+    url("../assets/images/bg-forest-to-digital-v2.png") center bottom / 100% auto no-repeat !important;
+  background-color: #f7f9ee !important;
+}
+
+@media (max-width: 768px) {
+  .inner-3d-hero {
+    padding-bottom: 150px !important;
+    background:
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.96) 0, rgba(255, 255, 255, 0.96) calc(100% - 230px), rgba(255, 255, 255, 0) calc(100% - 90px)),
+      url("../assets/images/bg-forest-to-digital-v2.png") center bottom / auto 230px no-repeat !important;
+    background-color: #f7f9ee !important;
+  }
+}
+
+
+/* 404 page top section uses the same forest-to-digital hero background */
+body[data-scene="404"] .hero-404 {
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.72) 45%, rgba(255, 255, 255, 0) 75%),
+    url("../assets/images/bg-forest-to-digital-v2.png") center bottom / 100% auto no-repeat !important;
+  background-color: #f7f9ee !important;
+}
+@media (max-width: 768px) {
+  body[data-scene="404"] .hero-404 {
+    padding-bottom: 150px !important;
+    background:
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.96) 0, rgba(255, 255, 255, 0.96) calc(100% - 230px), rgba(255, 255, 255, 0) calc(100% - 90px)),
+      url("../assets/images/bg-forest-to-digital-v2.png") center bottom / auto 230px no-repeat !important;
+    background-color: #f7f9ee !important;
+  }
+}
+
+
+/* Keep the (now 10-link) pill navbar inside the viewport on small desktops */
+@media (min-width: 993px) and (max-width: 1100px) {
+  .pill-navbar { gap: 2px; }
+  .pill-link { padding: 5px 4px; font-size: 0.62rem; letter-spacing: 0; }
+  .pill-brand span { display: none; }
+  .pill-cta { padding: 6px 9px; font-size: 0.68rem; }
+}

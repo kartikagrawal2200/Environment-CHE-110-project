@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Immersive Story | Paper &bull; Earth</title>
+  <meta name="description" content="A scroll-driven 3D story that follows a sheet of paper from forest to cloud, with the numbers behind its environmental footprint.">
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/theme.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/theme.js" defer></script>
+  <script src="js/experience.js" defer></script>
+
+  <style>
+    html { scroll-behavior: smooth; scroll-snap-type: y proximity; }
+    body.xp { margin: 0; background: #f1eee7; overflow-x: hidden; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; scroll-snap-type: none; } }
+
+    /* ---------- fixed 3D canvas + overlays ---------- */
+    #xpCanvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; transition: filter .35s ease; }
+    #xpCanvas.glitch { filter: drop-shadow(4px 0 0 rgba(255, 70, 70, .55)) drop-shadow(-4px 0 0 rgba(70, 130, 255, .55)); }
+    #xpLines { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; transition: opacity .4s ease; }
+    #xpLines path { fill: none; stroke: #1b3d1c; stroke-width: 1.6; }
+    #xpLines circle { fill: #1b3d1c; }
+    #xpFlash { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: rgba(255,255,255,.35); }
+    #xpFlash.go { animation: xpFlash .55s ease; }
+    @keyframes xpFlash { 0% { opacity: 0; backdrop-filter: blur(0); } 35% { opacity: 1; backdrop-filter: blur(14px) brightness(1.08); } 100% { opacity: 0; backdrop-filter: blur(0); } }
+
+    /* ---------- sections ---------- */
+    .xp-scene { position: relative; min-height: 100vh; min-height: 100svh; overflow: hidden; scroll-snap-align: start; display: flex; align-items: flex-end; box-sizing: border-box; padding: 120px 6vw 9vh; }
+    .xp-bigword { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%) translateX(var(--shift, 0px)); z-index: 0; white-space: nowrap; line-height: .8; user-select: none; pointer-events: none; margin: 0; will-change: transform; }
+    .xp-copy { position: relative; z-index: 3; max-width: 520px; }
+    .xp-kicker { display: inline-flex; align-items: center; gap: 10px; font: 700 .78rem/1 var(--font-body, Poppins, sans-serif); letter-spacing: .14em; text-transform: uppercase; color: #2e7d32; margin-bottom: 18px; }
+    .xp-kicker::before { content: ""; width: 34px; height: 2px; background: currentColor; }
+    .xp-title { overflow-wrap: break-word; font: 800 clamp(2.3rem, 5.4vw, 4.8rem)/.98 var(--font-body, Poppins, sans-serif); letter-spacing: -.03em; margin: 0 0 18px; color: #121a14; }
+    .xp-title em { font-style: normal; color: #2e9e4a; }
+    .xp-lead { font: 500 clamp(1rem, 1.35vw, 1.2rem)/1.6 var(--font-body, Poppins, sans-serif); color: #3b4d3c; margin: 0 0 26px; max-width: 46ch; }
+    .xp-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+    .xp-stat { background: rgba(255,255,255,.78); border: 1px solid rgba(46,125,50,.18); border-radius: 18px; padding: 14px 18px; min-width: 120px; backdrop-filter: blur(8px); }
+    .xp-stat b { display: block; font: 800 1.7rem/1 var(--font-body, Poppins, sans-serif); color: #1b5e20; }
+    .xp-stat span { font: 500 .78rem/1.3 var(--font-body, Poppins, sans-serif); color: #4a6b4b; }
+    .xp-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+    .xp-btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 26px; border-radius: 999px; font: 700 .95rem/1 var(--font-body, Poppins, sans-serif); text-decoration: none; transition: transform .2s ease, box-shadow .2s ease; }
+    .xp-btn:hover { transform: translateY(-2px); }
+    .xp-btn.primary { background: #123524; color: #fff; box-shadow: 0 10px 24px rgba(18,53,36,.28); }
+    .xp-btn.ghost { background: #fff; color: #1b3d1c; border: 2px solid #2e7d32; }
+
+    /* scene 1 – light studio */
+    #s1 { background:
+      linear-gradient(to bottom, rgba(244,243,238,0.94) 0%, rgba(244,243,238,0.75) 45%, rgba(244,243,238,0) 78%),
+      url("assets/images/bg-forest-to-digital-v2.png") center bottom / 100% auto no-repeat;
+      background-color: #ecebe5; }
+    #s1 .xp-copy { background: rgba(255,255,255,.72); backdrop-filter: blur(8px); padding: 24px 28px; border-radius: 28px; box-shadow: 0 18px 50px rgba(0,0,0,.08); }
+    #s1 .xp-bigword { top: 36%; font: 900 clamp(7rem, 27vw, 26rem)/.8 var(--font-body, Poppins, sans-serif); color: transparent; -webkit-text-stroke: 2px rgba(18,26,20,.13); letter-spacing: -.04em; }
+    .xp-callout { position: fixed; z-index: 3; font: 600 .9rem/1.3 var(--font-body, Poppins, sans-serif); color: #121a14; opacity: 0; transition: opacity .4s ease; pointer-events: none; }
+    .xp-callout b { display: block; font: 800 1.7rem/1 var(--font-body, Poppins, sans-serif); color: #2e9e4a; }
+    .xp-callout.show { opacity: 1; }
+
+    /* scene 2 – heavy type overlap */
+    #s2 { background: linear-gradient(180deg, #ffffff 0%, #f1f1ee 100%); justify-content: flex-end; }
+    #s2 .xp-bigword { font: 900 clamp(3.2rem, min(8.2vw, 19vh), 13rem)/.8 var(--font-body, Poppins, sans-serif); color: #0b0f0c; letter-spacing: -.05em; top: calc(60px + 17vh); left: 6vw; transform: translate(0, -50%) translateX(var(--shift, 0px)); }
+    #s2 .xp-copy { margin-left: auto; box-sizing: border-box; width: min(540px, 100%); max-width: 100%; background: rgba(255,255,255,.88); backdrop-filter: blur(10px); padding: 26px 30px; border-radius: 28px; box-shadow: 0 18px 50px rgba(0,0,0,.10); }
+    #s2 .xp-title { font-size: clamp(2rem, min(3.6vw, 6.2vh), 3.6rem); }
+    #s2 .xp-lead { margin-bottom: 18px; }
+
+    /* scene 3 – dark future */
+    #s3 { background: radial-gradient(900px 600px at 70% 40%, #0f3a28 0%, #07130d 60%, #040a07 100%); color: #e8fff0; }
+    #s3 .xp-bigword { font: 900 clamp(4rem, 14.5vw, 17rem)/.85 var(--font-body, Poppins, sans-serif); letter-spacing: -.04em; color: transparent; background: linear-gradient(180deg, rgba(120,255,170,.55), rgba(40,120,80,.05)); -webkit-background-clip: text; background-clip: text; text-align: center; top: 32%; }
+    #s3 .xp-title, #s3 .xp-stat b { color: #eafff1; }
+    #s3 .xp-title em { color: #6df0a0; }
+    #s3 .xp-lead { color: #a9d9ba; }
+    #s3 .xp-kicker { color: #6df0a0; }
+    #s3 .xp-stat { background: rgba(255,255,255,.06); border-color: rgba(109,240,160,.28); }
+    #s3 .xp-stat span { color: #a9d9ba; }
+
+    /* scene 4 – playful pastel */
+    #s4 { background: linear-gradient(135deg, #dff6dc 0%, #f4f7e2 45%, #ffe6ee 100%); }
+    #s4::before, #s4::after { content: ""; position: absolute; border-radius: 50%; filter: blur(40px); opacity: .6; z-index: 0; }
+    #s4::before { width: 40vw; height: 40vw; left: -10vw; top: -8vw; background: #b9ecc0; }
+    #s4::after { width: 36vw; height: 36vw; right: -8vw; bottom: -10vw; background: #ffc9da; }
+    #s4 .xp-bigword { font: 700 clamp(4rem, 15vw, 18rem)/.82 var(--font-heading, Fredoka, sans-serif); color: #ffffff; text-shadow: 0 10px 0 rgba(46,125,50,.18), 0 30px 60px rgba(46,125,50,.22); text-align: center; letter-spacing: -.02em; top: 33%; }
+    #s4 .xp-copy { margin-left: auto; }
+
+    /* progress rail */
+    .xp-rail { position: fixed; right: 18px; top: 50%; transform: translateY(-50%); z-index: 6; display: flex; flex-direction: column; gap: 14px; }
+    .xp-rail a { width: 12px; height: 12px; border-radius: 50%; background: rgba(18,26,20,.25); border: 2px solid transparent; transition: all .3s ease; display: block; position: relative; }
+    .xp-rail a.on { background: #2e9e4a; transform: scale(1.35); box-shadow: 0 0 0 4px rgba(46,158,74,.25); }
+    .xp-rail a span { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); font: 700 .72rem/1 var(--font-body, Poppins, sans-serif); letter-spacing: .08em; text-transform: uppercase; color: #121a14; background: rgba(255,255,255,.9); padding: 6px 10px; border-radius: 999px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
+    .xp-rail a:hover span { opacity: 1; }
+    body.dark-scene .xp-rail a { background: rgba(255,255,255,.35); }
+    body.dark-scene .xp-rail a.on { background: #6df0a0; box-shadow: 0 0 0 4px rgba(109,240,160,.25); }
+
+    .xp-hint { position: absolute; right: 7vw; left: auto; bottom: 22px; transform: none; z-index: 3; font: 700 .72rem/1 var(--font-body, Poppins, sans-serif); letter-spacing: .18em; text-transform: uppercase; color: #4a6b4b; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .xp-hint i { width: 2px; height: 28px; background: linear-gradient(#2e9e4a, transparent); animation: xpHint 1.6s ease-in-out infinite; }
+    @keyframes xpHint { 0% { transform: scaleY(.2); transform-origin: top; } 50% { transform: scaleY(1); transform-origin: top; } 100% { transform: scaleY(.2); transform-origin: bottom; } }
+
+    .xp-nofallback { display: none; position: fixed; inset: auto 16px 16px 16px; z-index: 10; background: #fff3cd; border: 1px solid #e0c36a; border-radius: 12px; padding: 12px 16px; font: 500 .9rem/1.4 var(--font-body, Poppins, sans-serif); color: #5b4a10; }
+    .xp-footer-wrap { position: relative; z-index: 3; background: #f7f9f2; }
+
+    @media (max-height: 760px) and (min-width: 861px) {
+      .xp-scene { padding-bottom: 5vh; }
+      .xp-title { margin-bottom: 10px; }
+      .xp-lead { margin-bottom: 14px; font-size: .95rem; }
+      .xp-stats { margin-bottom: 14px; }
+      .xp-stat { padding: 10px 14px; }
+      .xp-stat b { font-size: 1.35rem; }
+    }
+    @media (max-width: 860px) {
+      .xp-scene { padding: 100px 22px 7vh; align-items: flex-end; }
+      #s2 .xp-copy, #s4 .xp-copy { margin-left: 0; }
+      #s2 .xp-copy { padding: 18px 20px; }
+      .xp-copy { max-width: 100%; }
+      .xp-stat { min-width: 0; flex: 1 1 28%; padding: 12px 14px; }
+      .xp-stat b { font-size: 1.35rem; }
+      .xp-callout, .xp-hint { display: none; }
+      .xp-rail { right: 8px; gap: 12px; }
+      #xpLines { display: none; }
+      .xp-title { font-size: clamp(2rem, 9.5vw, 3rem); }
+      .xp-lead { font-size: .98rem; }
+    }
+  </style>
+</head>
+<body class="xp" data-scene="experience">
+  <a href="#s1" class="skip-link">Skip to story</a>
+
+  <div class="pill-navbar-wrapper">
+    <nav class="pill-navbar" aria-label="Primary Navigation">
+      <ul class="pill-links pill-links-left">
+        <li><a href="index.html" class="pill-link">Home</a></li>
+        <li><a href="lifecycle.html" class="pill-link">Lifecycle</a></li>
+        <li><a href="impact.html" class="pill-link">Impact</a></li>
+        <li><a href="paper-vs-digital.html" class="pill-link">Compare</a></li>
+        <li><a href="solutions.html" class="pill-link">Solutions</a></li>
+      <li><a href="experience.html" class="pill-link active">Story</a></li>
+      </ul>
+      <a href="index.html" class="pill-brand">
+        <svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="#2e7d32"/><path d="M12 10H28L36 18V38H12V10Z" fill="#f5f1e6"/><path d="M28 10V18H36" fill="#e8e0cc"/><path d="M34 26C37 26 40 23 40 20C37 20 34 23 34 26Z" fill="#81c784"/></svg>
+        <span>Paper &bull; Earth</span>
+      </a>
+      <ul class="pill-links pill-links-right" id="pillNavLinks">
+        <li><a href="calculator.html" class="pill-link">Calculator</a></li>
+        <li><a href="resources.html" class="pill-link">Sources</a></li>
+        <li><a href="about.html" class="pill-link">About</a></li>
+        <li><a href="contact.html" class="pill-link">Contact</a></li>
+      </ul>
+      <a href="calculator.html" class="pill-cta">Calculate Footprint &rarr;</a>
+      <button type="button" class="pill-mobile-toggle" id="pillMobileToggle" aria-label="Open Navigation Menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </nav>
+  </div>
+
+  <canvas id="xpCanvas" aria-hidden="true"></canvas>
+  <svg id="xpLines" aria-hidden="true"></svg>
+  <div id="xpFlash" aria-hidden="true"></div>
+
+  <div class="xp-callout" id="co1" data-side="left"  data-anchor="band"><b>500</b>sheets in<br>one ream</div>
+  <div class="xp-callout" id="co2" data-side="right" data-anchor="top"><b>10 L</b>of water<br>per sheet</div>
+  <div class="xp-callout" id="co3" data-side="right" data-anchor="edge"><b>24</b>trees per ton<br>of virgin paper</div>
+  <div class="xp-callout" id="co4" data-side="left"  data-anchor="base"><b>26%</b>ends up in<br>landfill</div>
+
+  <nav class="xp-rail" aria-label="Story sections">
+    <a href="#s1" class="on" aria-label="Paper"><span>Paper</span></a>
+    <a href="#s2" aria-label="Footprint"><span>Footprint</span></a>
+    <a href="#s3" aria-label="Digital"><span>Digital</span></a>
+    <a href="#s4" aria-label="Every sheet"><span>Every sheet</span></a>
+  </nav>
+
+  <main id="main-content">
+    <section class="xp-scene" id="s1" data-scene-index="0">
+      <h2 class="xp-bigword" aria-hidden="true">PAPER</h2>
+      <div class="xp-copy">
+        <div class="xp-kicker">Interactive story &middot; 01</div>
+        <h1 class="xp-title">your paper,<br><em>rethought</em></h1>
+        <p class="xp-lead">Every sheet carries a hidden footprint. Scroll to follow one ream from forest to cloud, and see the numbers behind it.</p>
+        <div class="xp-btns">
+          <a class="xp-btn primary" href="#s2">Start the story &darr;</a>
+          <a class="xp-btn ghost" href="calculator.html">Calculate yours</a>
+        </div>
+      </div>
+      <div class="xp-hint"><span>Scroll</span><i></i></div>
+    </section>
+
+    <section class="xp-scene" id="s2" data-scene-index="1">
+      <h2 class="xp-bigword" aria-hidden="true">FOOTPRINT</h2>
+      <div class="xp-copy">
+        <div class="xp-kicker">The cost &middot; 02</div>
+        <h2 class="xp-title">it starts with<br><em>a forest</em></h2>
+        <p class="xp-lead">Commercial logging feeds a huge share of the paper industry, and a harvested forest takes generations to grow back.</p>
+        <div class="xp-stats">
+          <div class="xp-stat"><b>40%</b><span>of global commercial wood</span></div>
+          <div class="xp-stat"><b>50 yr</b><span>forest recovery time</span></div>
+          <div class="xp-stat"><b>10 L</b><span>water per sheet</span></div>
+        </div>
+        <div class="xp-btns"><a class="xp-btn ghost" href="lifecycle.html">See the full lifecycle</a></div>
+      </div>
+    </section>
+
+    <section class="xp-scene" id="s3" data-scene-index="2">
+      <h2 class="xp-bigword" aria-hidden="true">GO DIGITAL</h2>
+      <div class="xp-copy">
+        <div class="xp-kicker">The shift &middot; 03</div>
+        <h2 class="xp-title">welcome to the<br><em>paperless</em> office</h2>
+        <p class="xp-lead">Swap one printer for one shared cloud folder and a ream of paper never has to be made.</p>
+        <div class="xp-stats">
+          <div class="xp-stat"><b>92%</b><span>carbon cut</span></div>
+          <div class="xp-stat"><b>0</b><span>virgin trees</span></div>
+          <div class="xp-stat"><b>98%</b><span>water conserved</span></div>
+        </div>
+        <div class="xp-btns"><a class="xp-btn primary" style="background:#6df0a0;color:#07130d" href="paper-vs-digital.html">Paper vs digital &rarr;</a></div>
+      </div>
+    </section>
+
+    <section class="xp-scene" id="s4" data-scene-index="3">
+      <h2 class="xp-bigword" aria-hidden="true">EVERY SHEET</h2>
+      <div class="xp-copy">
+        <div class="xp-kicker">Your move &middot; 04</div>
+        <h2 class="xp-title">small switches,<br><em>big forests</em></h2>
+        <p class="xp-lead">Print less, reuse more, recycle what is left, and let smart tools do the rest. Start with your own numbers.</p>
+        <div class="xp-btns">
+          <a class="xp-btn primary" href="calculator.html">Calculate your footprint</a>
+          <a class="xp-btn ghost" href="solutions.html">Explore the 5 R's</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="xp-footer-wrap">
+    <footer class="site-footer">
+      <div class="footer-container">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <h3>Paper <span class="brand-accent">&bull;</span> Earth</h3>
+            <p>An environmental awareness project investigating the ecological footprints of paper manufacturing and advancing digital transitions.</p>
+          </div>
+          <div class="footer-col">
+            <h4>Navigation</h4>
+            <ul class="footer-links">
+              <li><a href="index.html" class="footer-link">Home</a></li>
+              <li><a href="experience.html" class="footer-link">Immersive Story</a></li>
+              <li><a href="lifecycle.html" class="footer-link">Paper Lifecycle</a></li>
+              <li><a href="impact.html" class="footer-link">Environmental Impact</a></li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Interactive</h4>
+            <ul class="footer-links">
+              <li><a href="calculator.html" class="footer-link">Paper Footprint Calculator</a></li>
+              <li><a href="solutions.html" class="footer-link">5 R's &amp; AI/ML</a></li>
+              <li><a href="resources.html" class="footer-link">Citations &amp; Sources</a></li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Project Info</h4>
+            <ul class="footer-links">
+              <li><a href="about.html" class="footer-link">About Project &amp; Team</a></li>
+              <li><a href="contact.html" class="footer-link">Contact</a></li>
+              <li><a href="privacy.html" class="footer-link">Privacy Policy</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <div>&copy; 2026 Paper Consumption in the Digital Age. All rights reserved.</div>
+          <div><a href="#s1" class="back-to-top-btn">Back to top &uarr;</a></div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <div class="xp-nofallback" id="xpNoWebgl" role="status">3D view needs WebGL. The story text above still works without it.</div>
+</body>
+</html>

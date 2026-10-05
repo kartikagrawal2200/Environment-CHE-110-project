@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://kartikagrawal2200.github.io/Environment-__CA--2/sitemap.xml
+Sitemap: https://kartikagrawal2200.github.io/Environment-CHE-132-project/sitemap.xml

@@ -260,6 +260,135 @@
     }, { passive: true });
   }
 
+  // --------------------------------------------------------------------------
+  // SHARED 3D MODEL KIT (helpers used by every page model)
+  // --------------------------------------------------------------------------
+  function roundRectShape(w, h, r) {
+    const x = -w / 2, y = -h / 2, sh = new THREE.Shape();
+    sh.moveTo(x + r, y);
+    sh.lineTo(x + w - r, y);     sh.quadraticCurveTo(x + w, y, x + w, y + r);
+    sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    sh.lineTo(x + r, y + h);     sh.quadraticCurveTo(x, y + h, x, y + h - r);
+    sh.lineTo(x, y + r);         sh.quadraticCurveTo(x, y, x + r, y);
+    return sh;
+  }
+  function canvasRoundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function drawLeaf(ctx, cx, cy, size, color) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.6); ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(0, size);
+    ctx.bezierCurveTo(size * 0.95, size * 0.5, size * 0.95, -size * 0.6, 0, -size);
+    ctx.bezierCurveTo(-size * 0.95, -size * 0.6, -size * 0.95, size * 0.5, 0, size); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = size * 0.07;
+    ctx.beginPath(); ctx.moveTo(0, size * 0.85); ctx.lineTo(0, -size * 0.6); ctx.stroke();
+    ctx.restore();
+  }
+  function makeTex(w, h, draw) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d'); draw(ctx, w, h);
+    const t = new THREE.CanvasTexture(c);
+    if (THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = 4;
+    return t;
+  }
+  function std(color, o) {
+    return new THREE.MeshStandardMaterial(Object.assign({ color: color, roughness: 0.5, metalness: 0.08 }, o || {}));
+  }
+  function flat(color, o) {
+    return new THREE.MeshPhongMaterial(Object.assign({ color: color, flatShading: true, shininess: 8, specular: 0x111111 }, o || {}));
+  }
+  function extrudeRound(w, h, r, depth, bevel) {
+    const g = new THREE.ExtrudeGeometry(roundRectShape(w, h, r), {
+      depth: depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 14
+    });
+    g.translate(0, 0, -depth / 2);
+    return g;
+  }
+  function leafMesh(size, color, emissive) {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, -0.5); sh.bezierCurveTo(0.5, -0.25, 0.5, 0.3, 0, 0.55); sh.bezierCurveTo(-0.5, 0.3, -0.5, -0.25, 0, -0.5);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 3, curveSegments: 18 });
+    g.center();
+    const m = new THREE.Mesh(g, std(color, { roughness: 0.4, emissive: emissive || 0x1b5e20, emissiveIntensity: 0.25 }));
+    m.scale.setScalar(size);
+    return m;
+  }
+  function ringTexture() {
+    return makeTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#e9cf9f'; ctx.fillRect(0, 0, w, h);
+      for (let i = 12; i > 0; i--) {
+        ctx.fillStyle = i % 2 ? '#d8aa68' : '#efd6a6';
+        ctx.beginPath(); ctx.arc(128, 128, i * 10, 0, 7); ctx.fill();
+      }
+      ctx.fillStyle = '#b9873f'; ctx.beginPath(); ctx.arc(128, 128, 5, 0, 7); ctx.fill();
+    });
+  }
+  // Log lying along the X axis with growth-ring end caps
+  function makeLog(len, r) {
+    const cap = new THREE.MeshStandardMaterial({ map: ringTexture(), roughness: 0.7 });
+    const bark = flat(0x8a5a3a);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 20, 1), [bark, cap, cap]);
+    mesh.rotation.z = Math.PI / 2;
+    const g = new THREE.Group(); g.add(mesh);
+    return g;
+  }
+  function makeStump(r, h) {
+    const cap = new THREE.MeshStandardMaterial({ map: ringTexture(), roughness: 0.7 });
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.12, h, 22, 1), [flat(0x7d5233), cap, flat(0x6b4529)]);
+    return m;
+  }
+  function makePine(h) {
+    const g = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.05 * h, 0.075 * h, 0.3 * h, 6), flat(0x7a5232));
+    trunk.position.y = 0.15 * h; g.add(trunk);
+    const cols = [0x2e7d32, 0x388e3c, 0x4caf50];
+    [[0.34, 0.5, 0.3], [0.27, 0.45, 0.58], [0.19, 0.4, 0.84]].forEach(([rad, ht, y], i) => {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(rad * h, ht * h, 7), flat(cols[i]));
+      cone.position.y = y * h; g.add(cone);
+    });
+    return g;
+  }
+  function makeSheetStack(w, d, n, gap) {
+    const g = new THREE.Group();
+    const paper = std(0xfdfcf7, { roughness: 0.8 });
+    for (let i = 0; i < n; i++) {
+      const s = new THREE.Mesh(new THREE.BoxGeometry(w, gap * 0.8, d), paper);
+      s.position.set((Math.sin(i * 2.3) * 0.02), i * gap, (Math.cos(i * 1.7) * 0.02));
+      s.rotation.y = Math.sin(i * 1.3) * 0.05;
+      g.add(s);
+    }
+    return g;
+  }
+  function cylBetween(a, b, radius, mat) {
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, dir.length(), 6), mat);
+    m.position.copy(a).add(b).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    return m;
+  }
+  function makeBook(w, h, d, color) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), std(color, { roughness: 0.55 })));
+    const pages = new THREE.Mesh(new THREE.BoxGeometry(w - 0.06, h - 0.08, d + 0.03), std(0xf7efd9, { roughness: 0.9 }));
+    pages.position.set(0.035, 0, 0); g.add(pages);
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.03, h + 0.01, d + 0.04), std(color, { roughness: 0.5 }));
+    spine.position.set(-w / 2 + 0.015, 0, 0); g.add(spine);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.02, h * 0.55, d + 0.05), std(0xf1d58a, { metalness: 0.4, roughness: 0.4 }));
+    band.position.set(-w / 2 - 0.005, 0, 0); g.add(band);
+    return g;
+  }
+  function platformDisc(radius, color) {
+    const g = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 0.96, 0.12, 48), std(color || 0xe3f3df, { roughness: 0.6 }));
+    g.add(top);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.018, 8, 64), new THREE.MeshBasicMaterial({ color: 0x9ed8b0 }));
+    rim.rotation.x = Math.PI / 2; rim.position.y = 0.06; g.add(rim);
+    return g;
+  }
+
   /**
    * Builds the low-poly 3D object for each page
    */
@@ -283,6 +412,30 @@
 
       case 'solutions':
         buildSolutionsRecycleObject(parentGroup);
+        break;
+
+      case 'calculator':
+        buildCalculatorObject(parentGroup);
+        break;
+
+      case 'about':
+        buildAboutBulbObject(parentGroup);
+        break;
+
+      case 'contact':
+        buildContactEnvelopeObject(parentGroup);
+        break;
+
+      case 'resources':
+        buildResourcesBooksObject(parentGroup);
+        break;
+
+      case 'privacy':
+        buildPrivacyShieldObject(parentGroup);
+        break;
+
+      case 'action-plan':
+        buildActionPlanObject(parentGroup);
         break;
 
       default:
@@ -392,180 +545,88 @@
     group.add(r1Group);
     homeStudioModels.r1 = r1Group;
 
-    const r1FrontShell = new THREE.Group();
+    const r1Inner = new THREE.Group();
+    r1Group.add(r1Inner);
+    const ORANGE = 0xff5a1f, ORANGE_D = 0xd9440f;
+    const BW = 1.5, BH = 1.78;
+
+    // Back shell (rounded orange body)
     const r1BackShell = new THREE.Group();
-    const r1ScreenGroup = new THREE.Group();
+    const backMesh = new THREE.Mesh(extrudeRound(BW, BH, 0.26, 0.2, 0.05), std(ORANGE, { roughness: 0.42, metalness: 0.1 }));
+    backMesh.position.z = -0.1;
+    r1BackShell.add(backMesh);
+    const backLogo = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), new THREE.MeshBasicMaterial({
+      map: makeTex(128, 128, (ctx) => { ctx.clearRect(0, 0, 128, 128); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(64, 70, 24, 0, 7); ctx.fill(); [[48, 20], [80, 20]].forEach(([x, y]) => { ctx.beginPath(); ctx.ellipse(x, y + 12, 8, 24, 0, 0, 7); ctx.fill(); }); }),
+      transparent: true
+    }));
+    backLogo.position.z = -0.1 - 0.1 - 0.056; backLogo.rotation.y = Math.PI;
+    r1BackShell.add(backLogo);
+    r1Inner.add(r1BackShell);
+
+    // PCB (revealed when exploded)
     const r1CircuitGroup = new THREE.Group();
-    r1Group.add(r1FrontShell);
-    r1Group.add(r1BackShell);
-    r1Group.add(r1ScreenGroup);
-    r1Group.add(r1CircuitGroup);
-
-    const r1OrangeMat = new THREE.MeshStandardMaterial({
-      color: 0xeb4d26,
-      roughness: 0.35,
-      metalness: 0.08
+    const pcb = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 0.03), std(0x1f7a3a, { roughness: 0.5 }));
+    r1CircuitGroup.add(pcb);
+    const chipMat = std(0x1a1a1a, { roughness: 0.4 });
+    [[-0.25, 0.35, 0.34, 0.34], [0.3, 0.45, 0.22, 0.22], [0.1, -0.2, 0.4, 0.28], [-0.35, -0.5, 0.2, 0.2]].forEach(([x, y, w, h]) => {
+      const c = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.05), chipMat); c.position.set(x, y, 0.04); r1CircuitGroup.add(c);
     });
-    const r1DarkMat = new THREE.MeshStandardMaterial({
-      color: 0x181a1b,
-      roughness: 0.45,
-      metalness: 0.25
-    });
-    const r1MetalMat = new THREE.MeshStandardMaterial({
-      color: 0xd0d4d8,
-      roughness: 0.22,
-      metalness: 0.88
-    });
-
-    // Front Shell Body (Width 2.45, Height 2.55, Depth 0.24)
-    const mainBodyFront = new THREE.Mesh(new THREE.BoxGeometry(2.45, 2.55, 0.24), r1OrangeMat);
-    mainBodyFront.position.z = 0.12;
-    mainBodyFront.castShadow = true;
-    mainBodyFront.receiveShadow = true;
-    r1FrontShell.add(mainBodyFront);
-
-    // Back Shell Body
-    const mainBodyBack = new THREE.Mesh(new THREE.BoxGeometry(2.45, 2.55, 0.22), r1OrangeMat);
-    mainBodyBack.position.z = -0.11;
-    mainBodyBack.castShadow = true;
-    r1BackShell.add(mainBodyBack);
-
-    // Beveled corner bumpers for soft industrial radius
-    const cornerGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.24, 16);
-    [
-      [-1.14, 1.18, 0.12],
-      [-1.14, -1.18, 0.12],
-      [1.14, -1.18, 0.12]
-    ].forEach(pos => {
-      const bumper = new THREE.Mesh(cornerGeo, r1OrangeMat);
-      bumper.position.set(pos[0], pos[1], pos[2]);
-      r1FrontShell.add(bumper);
-    });
-
-    // Top-Right Camera Recess & 360° Rotational Eye
-    const eyeCutout = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.44, 0.44, 0.32, 28),
-      new THREE.MeshStandardMaterial({ color: 0x1c1f21, roughness: 0.6, metalness: 0.3 })
-    );
-    eyeCutout.position.set(0.92, 0.92, 0.12);
-    r1FrontShell.add(eyeCutout);
-
-    const eyePodGroup = new THREE.Group();
-    eyePodGroup.position.set(0.92, 0.92, 0.15);
-    r1FrontShell.add(eyePodGroup);
-    homeStudioModels.r1EyePod = eyePodGroup;
-
-    const eyePodCyl = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.33, 0.33, 0.44, 30),
-      r1DarkMat
-    );
-    eyePodGroup.add(eyePodCyl);
-
-    const eyeRing = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.34, 0.34, 0.08, 30),
-      r1MetalMat
-    );
-    eyeRing.position.y = 0.19;
-    eyePodGroup.add(eyeRing);
-
-    // Glossy camera lens glass
-    const lensRing = new THREE.Mesh(
-      new THREE.TorusGeometry(0.16, 0.04, 12, 28),
-      r1MetalMat
-    );
-    lensRing.position.set(0, 0, 0.34);
-    eyePodGroup.add(lensRing);
-
-    const lensGlass = new THREE.Mesh(
-      new THREE.CircleGeometry(0.15, 28),
-      new THREE.MeshStandardMaterial({ color: 0x051a2e, roughness: 0.08, metalness: 0.96 })
-    );
-    lensGlass.position.set(0, 0, 0.345);
-    eyePodGroup.add(lensGlass);
-
-    const irisDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.04, 12),
-      new THREE.MeshBasicMaterial({ color: 0x64b5f6 })
-    );
-    irisDot.position.set(0.04, 0.04, 0.348);
-    eyePodGroup.add(irisDot);
-
-    // Analog Scroll Wheel (Right Edge)
-    const wheelGroup = new THREE.Group();
-    wheelGroup.position.set(1.22, 0.16, 0.12);
-    r1FrontShell.add(wheelGroup);
-    homeStudioModels.r1ScrollWheel = wheelGroup;
-
-    const scrollWheelMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.25, 0.25, 0.48, 28),
-      r1MetalMat
-    );
-    scrollWheelMesh.castShadow = true;
-    wheelGroup.add(scrollWheelMesh);
-
-    const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.5, metalness: 0.75 });
-    for (let r = 0; r < 14; r++) {
-      const ringMesh = new THREE.Mesh(new THREE.TorusGeometry(0.252, 0.012, 6, 24), ridgeMat);
-      ringMesh.rotation.x = Math.PI / 2;
-      ringMesh.position.y = (r - 7) * 0.032;
-      wheelGroup.add(ringMesh);
-    }
-
-    // Push-to-Talk Button (Right Lower Edge)
-    const pttButton = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.18, 0.12, 24),
-      new THREE.MeshStandardMaterial({ color: 0xc83d18, roughness: 0.4, metalness: 0.15 })
-    );
-    pttButton.rotation.x = Math.PI / 2;
-    pttButton.position.set(1.02, -0.48, 0.25);
-    pttButton.castShadow = true;
-    r1FrontShell.add(pttButton);
-
-    const micDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.06, 12),
-      new THREE.MeshStandardMaterial({ color: 0x882a10, roughness: 0.8 })
-    );
-    micDot.position.set(1.02, -0.48, 0.315);
-    r1FrontShell.add(micDot);
-
-    // Display Screen with Glowing Rabbit Mascot
-    const screenBezel = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.48, 1.85),
-      new THREE.MeshStandardMaterial({ color: 0x0a0c0e, roughness: 0.2, metalness: 0.6 })
-    );
-    screenBezel.position.set(-0.35, 0.08, 0.246);
-    r1ScreenGroup.add(screenBezel);
-
-    const screenTexture = createRabbitScreenTexture();
-    const screenDisplay = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.42, 1.78),
-      new THREE.MeshBasicMaterial({ map: screenTexture })
-    );
-    screenDisplay.position.set(-0.35, 0.08, 0.252);
-    r1ScreenGroup.add(screenDisplay);
-
-    // Inner Emerald Circuit Board (Revealed on Explode)
-    const pcbMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(2.15, 2.25, 0.04),
-      new THREE.MeshStandardMaterial({ color: 0x1b5e20, roughness: 0.4, metalness: 0.3 })
-    );
-    r1CircuitGroup.add(pcbMesh);
-
-    const cpuMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.5, 0.06),
-      new THREE.MeshStandardMaterial({ color: 0x212121, roughness: 0.3, metalness: 0.8 })
-    );
-    cpuMesh.position.set(-0.2, 0.1, 0.035);
-    r1CircuitGroup.add(cpuMesh);
-
-    const goldTraceMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.2, metalness: 0.95 });
-    for (let t = 0; t < 6; t++) {
-      const trace = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8 + t * 0.12, 0.02), goldTraceMat);
-      trace.position.set(-0.7 + t * 0.26, -0.2, 0.03);
-      r1CircuitGroup.add(trace);
-    }
-
+    const traceMat = new THREE.MeshBasicMaterial({ color: 0xffd36b });
+    for (let i = 0; i < 7; i++) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.9 - (i % 3) * 0.2, 0.014, 0.004), traceMat); t.position.set((i % 2 ? 0.08 : -0.08), -0.62 + i * 0.2, 0.02); r1CircuitGroup.add(t); }
+    r1CircuitGroup.position.z = 0.0;
     r1CircuitGroup.scale.set(0.001, 0.001, 0.001);
+    r1Inner.add(r1CircuitGroup);
+
+    // Front shell: orange bezel with a window for the screen
+    const r1FrontShell = new THREE.Group();
+    const frame = roundRectShape(BW, BH, 0.26);
+    const hole = new THREE.Path();
+    const hw = 1.22, hh = 1.36, hr = 0.12, hx = -hw / 2, hy = -hh / 2 + 0.02;
+    hole.moveTo(hx + hr, hy); hole.lineTo(hx + hw - hr, hy); hole.quadraticCurveTo(hx + hw, hy, hx + hw, hy + hr);
+    hole.lineTo(hx + hw, hy + hh - hr); hole.quadraticCurveTo(hx + hw, hy + hh, hx + hw - hr, hy + hh);
+    hole.lineTo(hx + hr, hy + hh); hole.quadraticCurveTo(hx, hy + hh, hx, hy + hh - hr);
+    hole.lineTo(hx, hy + hr); hole.quadraticCurveTo(hx, hy, hx + hr, hy);
+    frame.holes.push(hole);
+    const frameMesh = new THREE.Mesh(new THREE.ExtrudeGeometry(frame, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 3, curveSegments: 12 }), std(ORANGE, { roughness: 0.42, metalness: 0.1 }));
+    frameMesh.position.z = 0.0; r1FrontShell.add(frameMesh);
+    r1Inner.add(r1FrontShell);
+
+    // Screen
+    const r1ScreenGroup = new THREE.Group();
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(hw + 0.02, hh + 0.02), new THREE.MeshBasicMaterial({ map: createRabbitScreenTexture() }));
+    glass.position.set(0, hy + hh / 2, 0.075);
+    r1ScreenGroup.add(glass);
+    r1Inner.add(r1ScreenGroup);
+
+    // Rotating camera eye pod (top-right)
+    const eyePodGroup = new THREE.Group();
+    eyePodGroup.position.set(0.38, BH / 2 + 0.02, 0.02);
+    const podBody = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.42, 28), std(0x15181a, { roughness: 0.35, metalness: 0.3 }));
+    eyePodGroup.add(podBody);
+    const lensRing = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.022, 10, 28), std(0x9aa3a8, { metalness: 0.8, roughness: 0.25 }));
+    lensRing.position.set(0, 0.04, 0.2); eyePodGroup.add(lensRing);
+    const lensGlass = new THREE.Mesh(new THREE.CircleGeometry(0.095, 24), new THREE.MeshBasicMaterial({ color: 0x1b2a4a }));
+    lensGlass.position.set(0, 0.04, 0.201); eyePodGroup.add(lensGlass);
+    const lensDot = new THREE.Mesh(new THREE.CircleGeometry(0.03, 12), new THREE.MeshBasicMaterial({ color: 0x7fb2ff }));
+    lensDot.position.set(-0.03, 0.07, 0.202); eyePodGroup.add(lensDot);
+    r1Inner.add(eyePodGroup);
+
+    // Scroll wheel (right edge) + push-to-talk button
+    const wheelGroup = new THREE.Group();
+    wheelGroup.position.set(BW / 2 + 0.03, 0.2, 0.02);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.34, 28), std(0x1b1d1f, { roughness: 0.5, metalness: 0.2 }));
+    wheelGroup.add(wheel);
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.34, 0.03), std(0x3a3d40));
+      rib.position.set(Math.cos(a) * 0.2, 0, Math.sin(a) * 0.2); rib.rotation.y = -a; wheelGroup.add(rib);
+    }
+    r1Inner.add(wheelGroup);
+    const ptt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.36, 0.2), std(ORANGE_D, { roughness: 0.4 }));
+    ptt.position.set(BW / 2 + 0.06, -0.42, 0.02); r1Inner.add(ptt);
+
+    r1Inner.scale.setScalar(0.86);
+    r1Inner.position.y = -0.1;
     homeStudioModels.r1Elements = { r1FrontShell, r1BackShell, r1ScreenGroup, r1CircuitGroup, eyePodGroup, wheelGroup };
 
     // ------------------------------------------------------------------------
@@ -576,95 +637,59 @@
     homeStudioModels.ream = reamGroup;
     reamGroup.scale.set(0.001, 0.001, 0.001); // Inactive initially (r1 is active)
 
-    const topStack = new THREE.Group();
-    reamGroup.add(topStack);
+    const reamInner = new THREE.Group();
+    reamGroup.add(reamInner);
+    const RW = 1.5, RD = 1.05, RH = 0.34;
 
-    const bottomStack = new THREE.Group();
-    reamGroup.add(bottomStack);
-
-    const paperWhiteMat = new THREE.MeshLambertMaterial({ color: 0xfcfbf7 });
-    const paperCreamMat = new THREE.MeshLambertMaterial({ color: 0xf3ede1 });
-    const paperEdgeMat = new THREE.MeshLambertMaterial({ color: 0xe8e1cf });
-
-    const sheetCount = 26;
-    const sheetW = 2.4, sheetD = 3.1, sheetH = 0.042;
-
-    for (let i = 0; i < sheetCount; i++) {
-      const isTop = (i === sheetCount - 1);
-      const isTopHalf = i >= sheetCount / 2;
-      const mat = isTop ? paperWhiteMat : (i % 2 === 0 ? paperCreamMat : paperEdgeMat);
-      const sheet = new THREE.Mesh(new THREE.BoxGeometry(sheetW, sheetH, sheetD), mat);
-      
-      const localY = (i - sheetCount / 2) * sheetH;
-      sheet.rotation.y = (Math.sin(i * 1.7) * 0.03);
-      sheet.castShadow = true;
-      sheet.receiveShadow = true;
-
-      if (isTopHalf) {
-        sheet.position.y = localY - (sheetCount / 4) * sheetH;
-        topStack.add(sheet);
-      } else {
-        sheet.position.y = localY + (sheetCount / 4) * sheetH;
-        bottomStack.add(sheet);
-      }
+    const edgeTex = makeTex(256, 64, (ctx, w, h) => {
+      ctx.fillStyle = '#efece0'; ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = 'rgba(105,120,105,0.6)'; ctx.lineWidth = 1.2;
+      for (let y = 2; y < h; y += 3) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    });
+    const topTex = makeTex(256, 192, (ctx, w, h) => {
+      ctx.fillStyle = '#f6f4ea'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#c3d0c3';
+      for (let i = 0; i < 9; i++) ctx.fillRect(24, 22 + i * 16, i % 4 === 3 ? 110 : 200, 5);
+    });
+    const edgeMat = new THREE.MeshStandardMaterial({ map: edgeTex, roughness: 0.85 });
+    const topMat = new THREE.MeshStandardMaterial({ map: topTex, roughness: 0.85 });
+    const plain = std(0xe9e6d8, { roughness: 0.9 });
+    function makeStack(topFace) {
+      const gp = new THREE.Group();
+      gp.add(new THREE.Mesh(new THREE.BoxGeometry(RW, RH, RD), [edgeMat, edgeMat, topFace ? topMat : plain, plain, edgeMat, edgeMat]));
+      return gp;
     }
-    topStack.position.y = (sheetCount / 4) * sheetH;
-    bottomStack.position.y = -(sheetCount / 4) * sheetH;
+    const topStack = makeStack(true), bottomStack = makeStack(false);
+    topStack.position.y = RH / 2; bottomStack.position.y = -RH / 2;
+    reamInner.add(topStack, bottomStack);
 
-    // Kraft Band with FSC Leaf Seal
-    const bandMat = new THREE.MeshLambertMaterial({ color: 0xd2b48c });
-    const wrapperBand = new THREE.Mesh(new THREE.BoxGeometry(2.44, 0.48, 3.14), bandMat);
-    wrapperBand.position.y = 0;
-    wrapperBand.castShadow = true;
-    reamGroup.add(wrapperBand);
+    // Kraft belly band with label
+    const wrapperBand = new THREE.Group();
+    const labelTex = makeTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#c9a26b'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; for (let i = 0; i < 40; i++) ctx.fillRect(Math.random() * w, Math.random() * h, 30, 1);
+      ctx.fillStyle = '#fffaf0'; canvasRoundRect(ctx, 24, 56, 208, 144, 14); ctx.fill();
+      drawLeaf(ctx, 70, 112, 26, '#2e7d32');
+      ctx.fillStyle = '#1b3d1c'; ctx.font = '800 34px Arial'; ctx.textAlign = 'left'; ctx.fillText('500', 110, 112);
+      ctx.font = '700 20px Arial'; ctx.fillText('SHEETS \u00b7 A4', 100, 140);
+      ctx.fillStyle = '#6d5a3c'; ctx.font = '600 16px Arial'; ctx.fillText('80 GSM \u00b7 VIRGIN PULP', 40, 178);
+    });
+    const kraft = std(0xc9a26b, { roughness: 0.8 });
+    const labelMat = new THREE.MeshStandardMaterial({ map: labelTex, roughness: 0.8 });
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.66, RH * 2 + 0.04, RD + 0.04), [kraft, kraft, kraft, kraft, labelMat, kraft]);
+    wrapperBand.add(band);
+    reamInner.add(wrapperBand);
 
-    const sealMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
-    const seal = new THREE.Mesh(new THREE.CircleGeometry(0.18, 16), sealMat);
-    seal.position.set(0, 0, 1.575);
-    wrapperBand.add(seal);
-
-    // Hidden Timber Core
+    // Timber core revealed when the ream is exploded
     const timberCoreGroup = new THREE.Group();
-    const barkMat = new THREE.MeshLambertMaterial({ color: 0x5d4037, flatShading: true });
-    const timberCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.52, 1.0, 16), barkMat);
-    timberCyl.rotation.z = Math.PI / 2;
-    timberCoreGroup.add(timberCyl);
-
-    const ringMat = new THREE.MeshLambertMaterial({ color: 0xd7ccc8, flatShading: true });
-    const ring1 = new THREE.Mesh(new THREE.CircleGeometry(0.47, 16), ringMat);
-    ring1.position.x = 0.501;
-    ring1.rotation.y = Math.PI / 2;
-    timberCoreGroup.add(ring1);
-
-    const ring2 = new THREE.Mesh(new THREE.CircleGeometry(0.51, 16), ringMat);
-    ring2.position.x = -0.501;
-    ring2.rotation.y = -Math.PI / 2;
-    timberCoreGroup.add(ring2);
-
+    const capTex = new THREE.MeshStandardMaterial({ map: ringTexture(), roughness: 0.7 });
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.37, 0.5, 24), [flat(0x7d5233), capTex, capTex]);
+    timberCoreGroup.add(core);
+    const sp = leafMesh(0.36, 0x66bb6a); sp.position.set(0.0, 0.5, 0.0); sp.rotation.z = -0.4; timberCoreGroup.add(sp);
     timberCoreGroup.scale.set(0.001, 0.001, 0.001);
-    reamGroup.add(timberCoreGroup);
+    reamInner.add(timberCoreGroup);
 
-    // Budding Sprout
-    const sproutGroup = new THREE.Group();
-    sproutGroup.position.set(0, (sheetCount / 4) * sheetH + sheetH, 0);
-    const stemMat = new THREE.MeshLambertMaterial({ color: 0x43a047 });
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.45, 6), stemMat);
-    stem.position.y = 0.22;
-    sproutGroup.add(stem);
-
-    const leafMat = new THREE.MeshLambertMaterial({ color: 0x81c784, side: THREE.DoubleSide });
-    const leafGeo = new THREE.ConeGeometry(0.14, 0.36, 5);
-    const leaf1 = new THREE.Mesh(leafGeo, leafMat);
-    leaf1.position.set(0.12, 0.4, 0);
-    leaf1.rotation.z = -Math.PI / 3;
-    sproutGroup.add(leaf1);
-
-    const leaf2 = new THREE.Mesh(leafGeo, leafMat);
-    leaf2.position.set(-0.12, 0.38, 0);
-    leaf2.rotation.z = Math.PI / 3;
-    sproutGroup.add(leaf2);
-    topStack.add(sproutGroup);
-
+    const reamPlat = platformDisc(1.35, 0xd6edd3); reamPlat.position.y = -0.62; reamInner.add(reamPlat);
+    reamInner.scale.setScalar(0.82); reamInner.position.y = 0.05;
     homeStudioModels.reamElements = { topStack, bottomStack, wrapperBand, timberCoreGroup };
 
     // ------------------------------------------------------------------------
@@ -675,54 +700,213 @@
     homeStudioModels.digital = digitalGroup;
     digitalGroup.scale.set(0.001, 0.001, 0.001);
 
-    const chassisMat = new THREE.MeshLambertMaterial({ color: 0xe8eaed });
-    const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 3.2), chassisMat);
-    chassis.castShadow = true;
-    digitalGroup.add(chassis);
+    // ---- helpers -------------------------------------------------------
+    function roundRectShape(w, h, r) {
+      const x = -w / 2, y = -h / 2, sh = new THREE.Shape();
+      sh.moveTo(x + r, y);
+      sh.lineTo(x + w - r, y);  sh.quadraticCurveTo(x + w, y, x + w, y + r);
+      sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      sh.lineTo(x + r, y + h);  sh.quadraticCurveTo(x, y + h, x, y + h - r);
+      sh.lineTo(x, y + r);      sh.quadraticCurveTo(x, y, x + r, y);
+      return sh;
+    }
+    function canvasRoundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    }
+    function drawLeaf(ctx, cx, cy, size, color) {
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.6); ctx.fillStyle = color;
+      ctx.beginPath(); ctx.moveTo(0, size);
+      ctx.bezierCurveTo(size * 0.95, size * 0.5, size * 0.95, -size * 0.6, 0, -size);
+      ctx.bezierCurveTo(-size * 0.95, -size * 0.6, -size * 0.95, size * 0.5, 0, size); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = size * 0.07;
+      ctx.beginPath(); ctx.moveTo(0, size * 0.85); ctx.lineTo(0, -size * 0.6); ctx.stroke();
+      ctx.restore();
+    }
+    function makeTex(w, h, draw) {
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d'); draw(ctx, w, h);
+      const t = new THREE.CanvasTexture(c);
+      if (THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
+      t.anisotropy = 4;
+      return t;
+    }
 
-    const screenMat = new THREE.MeshLambertMaterial({ color: 0xfdfbf7 });
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 2.8), screenMat);
-    screen.rotation.x = -Math.PI / 2;
-    screen.position.y = 0.065;
-    digitalGroup.add(screen);
+    // ---- tablet body (rounded aluminium slab, standing upright) ----------
+    const TW = 1.75, TH = 2.35, TD = 0.1;
+    const tablet = new THREE.Group();
+    digitalGroup.add(tablet);
 
-    const barGreen1 = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
-    const barGreen2 = new THREE.MeshLambertMaterial({ color: 0x81c784 });
-    const barGreen3 = new THREE.MeshLambertMaterial({ color: 0x43a047 });
+    const bodyGeo = new THREE.ExtrudeGeometry(roundRectShape(TW, TH, 0.2), {
+      depth: TD, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 4, curveSegments: 18
+    });
+    bodyGeo.translate(0, 0, -TD / 2);
+    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xcfd8d2, roughness: 0.38, metalness: 0.25 }));
+    body.castShadow = true;
+    tablet.add(body);
 
-    const chartBar1 = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 1.2), barGreen1);
-    chartBar1.rotation.x = -Math.PI / 2;
-    chartBar1.position.set(-0.55, 0.07, 0.3);
-    digitalGroup.add(chartBar1);
+    const front = TD / 2 + 0.027;
+    const bezel = new THREE.Mesh(
+      new THREE.ShapeGeometry(roundRectShape(TW - 0.06, TH - 0.06, 0.17), 18),
+      new THREE.MeshBasicMaterial({ color: 0x10241a })
+    );
+    bezel.position.z = front;
+    tablet.add(bezel);
 
-    const chartBar2 = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 1.7), barGreen2);
-    chartBar2.rotation.x = -Math.PI / 2;
-    chartBar2.position.set(0, 0.07, 0.05);
-    digitalGroup.add(chartBar2);
+    // Live-looking dashboard on the screen
+    const screenTex = makeTex(640, 860, (ctx, w, h) => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.save(); canvasRoundRect(ctx, 0, 0, w, h, 38); ctx.clip();
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#f4fbf2'); g.addColorStop(1, '#e3f3e0');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
 
-    const chartBar3 = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 2.1), barGreen3);
-    chartBar3.rotation.x = -Math.PI / 2;
-    chartBar3.position.set(0.55, 0.07, -0.15);
-    digitalGroup.add(chartBar3);
+      // header
+      ctx.fillStyle = '#1b5e20'; ctx.fillRect(0, 0, w, 96);
+      drawLeaf(ctx, 56, 48, 22, '#a5e3a0');
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 30px Poppins, Arial, sans-serif'; ctx.textBaseline = 'middle';
+      ctx.fillText('PAPERLESS OFFICE', 92, 50);
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.arc(w - 48, 48, 9, 0, 7); ctx.fill();
 
-    const dialRingMat = new THREE.MeshLambertMaterial({ color: 0x43a047 });
-    const tactileDial = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.22, 16), dialRingMat);
-    tactileDial.position.set(1.15, 0.14, 1.2);
-    tactileDial.rotation.z = Math.PI / 2;
-    digitalGroup.add(tactileDial);
-    homeStudioModels.digitalWheel = tactileDial;
+      // big stat
+      ctx.fillStyle = '#1b3d1c'; ctx.font = '800 118px Poppins, Arial, sans-serif'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('92%', 44, 252);
+      ctx.fillStyle = '#4a6b4b'; ctx.font = '600 28px Poppins, Arial, sans-serif';
+      ctx.fillText('lifetime carbon cut vs. paper', 48, 296);
 
+      // bar chart card
+      ctx.fillStyle = '#ffffff'; canvasRoundRect(ctx, 36, 330, w - 72, 270, 26); ctx.fill();
+      const bars = [0.35, 0.5, 0.68, 0.82, 1.0];
+      bars.forEach((v, i) => {
+        const bw = 62, gap = 28, x = 74 + i * (bw + gap), bh = 190 * v, y = 566 - bh;
+        const bg = ctx.createLinearGradient(0, y, 0, 566);
+        bg.addColorStop(0, i === 4 ? '#2e7d32' : '#81c784'); bg.addColorStop(1, i === 4 ? '#1b5e20' : '#a5d6a7');
+        ctx.fillStyle = bg; canvasRoundRect(ctx, x, y, bw, bh, 12); ctx.fill();
+      });
+      ctx.strokeStyle = 'rgba(46,125,50,0.18)'; ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(60, 400 + i * 62); ctx.lineTo(w - 60, 400 + i * 62); ctx.stroke(); }
+
+      // document rows
+      for (let i = 0; i < 3; i++) {
+        const y = 628 + i * 64;
+        ctx.fillStyle = '#ffffff'; canvasRoundRect(ctx, 36, y, w - 72, 52, 16); ctx.fill();
+        ctx.fillStyle = '#c8e6c9'; canvasRoundRect(ctx, 52, y + 11, 30, 30, 8); ctx.fill();
+        ctx.fillStyle = '#d6e4d6'; canvasRoundRect(ctx, 100, y + 16, 250 - i * 30, 9, 5); ctx.fill();
+        ctx.fillStyle = '#e6eee6'; canvasRoundRect(ctx, 100, y + 32, 160 - i * 20, 7, 4); ctx.fill();
+        ctx.fillStyle = '#2e7d32'; ctx.font = '700 22px Poppins, Arial, sans-serif'; ctx.textBaseline = 'middle';
+        ctx.fillText('\u2713', w - 76, y + 27);
+      }
+      ctx.restore();
+    });
+    const screen = new THREE.Mesh(
+      new THREE.PlaneGeometry(TW - 0.14, (TW - 0.14) * 860 / 640),
+      new THREE.MeshBasicMaterial({ map: screenTex, transparent: true })
+    );
+    screen.scale.y = (TH - 0.14) / ((TW - 0.14) * 860 / 640);
+    screen.position.z = front + 0.002;
+    tablet.add(screen);
+
+    // Soft glass sheen across the screen
+    const sheen = new THREE.Mesh(
+      new THREE.PlaneGeometry(TW - 0.14, TH - 0.14),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.07 })
+    );
+    sheen.position.z = front + 0.004;
+    sheen.rotation.z = 0.0;
+    tablet.add(sheen);
+
+    // Back logo
+    const logoTex = makeTex(256, 256, (ctx, w, h) => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = 'rgba(46,125,50,0.18)'; ctx.beginPath(); ctx.arc(128, 128, 112, 0, 7); ctx.fill();
+      drawLeaf(ctx, 128, 128, 70, '#2e7d32');
+    });
+    const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), new THREE.MeshBasicMaterial({ map: logoTex, transparent: true }));
+    logo.position.z = -(front);
+    logo.rotation.y = Math.PI;
+    tablet.add(logo);
+
+    // Knurled tactile scroll dial on the right edge
+    const dialHolder = new THREE.Group();
+    dialHolder.position.set(TW / 2 + 0.02, 0.55, 0);
+    const dial = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 0.2, 24),
+      new THREE.MeshStandardMaterial({ color: 0x43a047, roughness: 0.35, metalness: 0.3 })
+    );
+    dial.rotation.z = Math.PI / 2;
+    dialHolder.add(dial);
+    for (let k = 0; k < 14; k++) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.025), new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.5 }));
+      const ang = (k / 14) * Math.PI * 2;
+      rib.position.set(0, Math.cos(ang) * 0.15, Math.sin(ang) * 0.15);
+      rib.rotation.x = ang;
+      dialHolder.add(rib);
+    }
+    tablet.add(dialHolder);
+    homeStudioModels.digitalWheel = dialHolder;
+
+    // ---- floating UI cards (cloud / document / chart) ---------------------
+    function makeCard(drawIcon) {
+      const tex = makeTex(256, 256, (ctx, w, h) => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.shadowColor = 'rgba(27,94,32,0.25)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
+        ctx.fillStyle = '#ffffff'; canvasRoundRect(ctx, 28, 24, 200, 200, 46); ctx.fill();
+        ctx.shadowColor = 'transparent';
+        drawIcon(ctx);
+      });
+      return new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.72), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    }
+    const cardCloud = makeCard((ctx) => {
+      ctx.fillStyle = '#e8f5e9'; ctx.beginPath();
+      ctx.arc(104, 128, 34, 0, 7); ctx.arc(138, 112, 40, 0, 7); ctx.arc(170, 132, 30, 0, 7); ctx.fill();
+      ctx.fillRect(104, 128, 66, 34);
+      ctx.strokeStyle = '#43a047'; ctx.lineWidth = 6; ctx.stroke();
+      drawLeaf(ctx, 138, 134, 22, '#2e7d32');
+    });
+    const cardDoc = makeCard((ctx) => {
+      ctx.fillStyle = '#f1f8f1'; canvasRoundRect(ctx, 86, 70, 84, 112, 10); ctx.fill();
+      ctx.strokeStyle = '#43a047'; ctx.lineWidth = 6; ctx.stroke();
+      ctx.fillStyle = '#81c784';
+      [96, 114, 132].forEach((y, i) => { canvasRoundRect(ctx, 98, y, 60 - i * 12, 7, 3); ctx.fill(); });
+      ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(160, 168, 20, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.beginPath();
+      ctx.moveTo(151, 168); ctx.lineTo(158, 175); ctx.lineTo(170, 160); ctx.stroke();
+    });
+    const cardChart = makeCard((ctx) => {
+      [[84, 40], [114, 70], [144, 100]].forEach(([x, hh], i) => {
+        ctx.fillStyle = ['#a5d6a7', '#66bb6a', '#2e7d32'][i]; canvasRoundRect(ctx, x, 180 - hh, 22, hh, 7); ctx.fill();
+      });
+      ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(84, 98); ctx.lineTo(120, 80); ctx.lineTo(170, 56); ctx.stroke();
+    });
+    const floatCards = [
+      { mesh: cardCloud, base: new THREE.Vector3(-1.38, 0.82, 0.55), phase: 0.0 },
+      { mesh: cardDoc,   base: new THREE.Vector3(1.42, -0.55, 0.75), phase: 1.7 },
+      { mesh: cardChart, base: new THREE.Vector3(-1.22, -0.95, 0.9), phase: 3.1 }
+    ];
+    floatCards.forEach(c => { c.mesh.position.copy(c.base); digitalGroup.add(c.mesh); });
+
+    // ---- orbiting data nodes (glowing mint gems) -------------------------
     const nodesGroup = new THREE.Group();
-    const nodeMat = new THREE.MeshLambertMaterial({ color: 0x81c784 });
-    const nodeGeo = new THREE.DodecahedronGeometry(0.12, 0);
-    for (let n = 0; n < 4; n++) {
+    const nodeMat = new THREE.MeshStandardMaterial({ color: 0x8fe39a, emissive: 0x4caf50, emissiveIntensity: 0.55, roughness: 0.3, flatShading: true });
+    const nodeGeo = new THREE.OctahedronGeometry(0.09, 0);
+    for (let n = 0; n < 6; n++) {
       const node = new THREE.Mesh(nodeGeo, nodeMat);
-      const angle = (n / 4) * Math.PI * 2;
-      node.position.set(Math.cos(angle) * 1.8, (n % 2 === 0 ? 0.35 : -0.35), Math.sin(angle) * 1.8);
+      const angle = (n / 6) * Math.PI * 2;
+      node.position.set(Math.cos(angle) * 1.95, (n % 2 === 0 ? 0.55 : -0.5), Math.sin(angle) * 1.95);
       nodesGroup.add(node);
     }
     digitalGroup.add(nodesGroup);
     homeStudioModels.digitalNodes = nodesGroup;
+
+    homeStudioModels.digitalElements = { screen, sheen, bezel, floatCards };
+    // Fit the whole tablet scene comfortably inside the stage
+    const digitalInner = new THREE.Group();
+    digitalGroup.children.slice().forEach(k => { digitalGroup.remove(k); digitalInner.add(k); });
+    digitalInner.scale.setScalar(0.7);
+    digitalInner.rotation.x = -0.05;
+    digitalGroup.add(digitalInner);
 
     // ------------------------------------------------------------------------
     // 4. MODEL FOREST: Rustic Birch Log with Annual Rings & Living Foliage Sprout
@@ -732,39 +916,33 @@
     homeStudioModels.forest = forestGroup;
     forestGroup.scale.set(0.001, 0.001, 0.001);
 
-    const forestBarkMat = new THREE.MeshLambertMaterial({ color: 0xe0dbd1, flatShading: true });
-    const forestLog = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.72, 2.6, 16), forestBarkMat);
-    forestLog.rotation.z = Math.PI / 2;
-    forestLog.castShadow = true;
-    forestGroup.add(forestLog);
+    const isle = new THREE.Group();
+    forestGroup.add(isle);
+    // Floating island: soil underside + grass top
+    const soil = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 0.55, 0.9, 10, 1), flat(0x7a5a3a));
+    soil.position.y = -0.55; isle.add(soil);
+    const strata = new THREE.Mesh(new THREE.CylinderGeometry(1.46, 1.38, 0.1, 10), flat(0x5f4429)); strata.position.y = -0.14; isle.add(strata);
+    const grass = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.46, 0.16, 10), flat(0x66b05a)); grass.position.y = -0.01; isle.add(grass);
+    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 0), flat(0x9aa6a0)); rock.position.set(-0.8, 0.12, 1.0); isle.add(rock);
 
-    const fleckMat = new THREE.MeshLambertMaterial({ color: 0x3e2723, flatShading: true });
-    for (let f = 0; f < 14; f++) {
-      const fleck = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.04), fleckMat);
-      const angle = (f / 14) * Math.PI * 2;
-      fleck.position.set(
-        (f % 2 === 0 ? 0.6 : -0.6) * (Math.sin(f * 2.1)),
-        Math.cos(angle) * 0.71,
-        Math.sin(angle) * 0.71
-      );
-      fleck.rotation.z = angle;
-      forestGroup.add(fleck);
-    }
+    // Standing pines (deterministic layout)
+    const treeSpots = [
+      [-0.85, -0.35, 1.35], [-0.2, -0.85, 1.1], [0.6, -0.55, 1.5], [1.0, 0.1, 1.0], [-1.0, 0.45, 0.95], [0.1, 0.1, 1.25], [0.75, 0.75, 0.8], [-0.35, 0.85, 0.85]
+    ];
+    treeSpots.forEach(([x, z, h]) => { const t = makePine(h); t.position.set(x, 0.07, z); t.rotation.y = x * 3; isle.add(t); });
 
-    const logRingMat = new THREE.MeshLambertMaterial({ color: 0xd7ccc8, flatShading: true });
-    const endRing1 = new THREE.Mesh(new THREE.CircleGeometry(0.66, 16), logRingMat);
-    endRing1.position.x = 1.301;
-    endRing1.rotation.y = Math.PI / 2;
-    forestGroup.add(endRing1);
+    // Felled area: stump + log pile
+    const stump = makeStump(0.2, 0.2); stump.position.set(0.1, 0.17, 1.05); isle.add(stump);
+    const lg = makeLog(0.7, 0.11); lg.position.set(0.85, 0.18, 1.05); lg.rotation.y = 0.5; isle.add(lg);
+    const lg2 = makeLog(0.7, 0.11); lg2.position.set(0.95, 0.18, 1.3); lg2.rotation.y = 0.35; isle.add(lg2);
+    const lg3 = makeLog(0.7, 0.11); lg3.position.set(0.9, 0.38, 1.18); lg3.rotation.y = 0.42; isle.add(lg3);
 
-    const endRing2 = new THREE.Mesh(new THREE.CircleGeometry(0.70, 16), logRingMat);
-    endRing2.position.x = -1.301;
-    endRing2.rotation.y = -Math.PI / 2;
-    forestGroup.add(endRing2);
+    // A new sapling restoring the forest
+    const sap = leafMesh(0.3, 0x7ad06a); sap.position.set(-0.3, 0.32, 1.15); isle.add(sap);
+    const sapStem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.2, 5), flat(0x5d8f3a)); sapStem.position.set(-0.3, 0.17, 1.15); isle.add(sapStem);
 
-    const forestSprout = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 6), stemMat);
-    forestSprout.position.set(0, 0.88, 0);
-    forestGroup.add(forestSprout);
+    isle.scale.setScalar(0.72); isle.position.y = -0.2; isle.rotation.x = 0.0;
+    homeStudioModels.forestIsle = isle;
 
     // ------------------------------------------------------------------------
     // 5. MODEL CIRCULAR: Origami Faceted Sustainable Tree & Circular Recycling Arrows
@@ -774,20 +952,20 @@
     homeStudioModels.circular = circularGroup;
     circularGroup.scale.set(0.001, 0.001, 0.001);
 
-    const origamiTrunkMat = new THREE.MeshLambertMaterial({ color: 0xf5f3ed, flatShading: true });
+    const origamiTrunkMat = new THREE.MeshPhongMaterial({ color: 0xf5f3ed, flatShading: true });
     const origamiTrunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.44, 1.5, 6), origamiTrunkMat);
     origamiTrunk.position.y = -0.4;
     circularGroup.add(origamiTrunk);
 
-    const origamiLeaves1 = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1.1, 6), new THREE.MeshLambertMaterial({ color: 0x1b5e20, flatShading: true }));
+    const origamiLeaves1 = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1.1, 6), new THREE.MeshPhongMaterial({ color: 0x1b5e20, flatShading: true }));
     origamiLeaves1.position.y = 0.3;
     circularGroup.add(origamiLeaves1);
 
-    const origamiLeaves2 = new THREE.Mesh(new THREE.ConeGeometry(1.1, 0.95, 6), new THREE.MeshLambertMaterial({ color: 0x2e7d32, flatShading: true }));
+    const origamiLeaves2 = new THREE.Mesh(new THREE.ConeGeometry(1.1, 0.95, 6), new THREE.MeshPhongMaterial({ color: 0x2e7d32, flatShading: true }));
     origamiLeaves2.position.y = 0.95;
     circularGroup.add(origamiLeaves2);
 
-    const origamiLeaves3 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.85, 6), new THREE.MeshLambertMaterial({ color: 0x43a047, flatShading: true }));
+    const origamiLeaves3 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.85, 6), new THREE.MeshPhongMaterial({ color: 0x43a047, flatShading: true }));
     origamiLeaves3.position.y = 1.55;
     circularGroup.add(origamiLeaves3);
 
@@ -894,14 +1072,31 @@
       if (homeStudioModels.reamElements) {
         const { topStack, bottomStack, wrapperBand, timberCoreGroup } = homeStudioModels.reamElements;
         if (topStack && bottomStack && wrapperBand && timberCoreGroup) {
-          topStack.position.y = 0.28 + studioExplodeProgress * 1.45;
-          bottomStack.position.y = -0.28 - studioExplodeProgress * 1.25;
-          wrapperBand.position.z = studioExplodeProgress * 1.35;
+          topStack.position.y = 0.17 + studioExplodeProgress * 0.95;
+          bottomStack.position.y = -0.17 - studioExplodeProgress * 0.7;
+          wrapperBand.position.z = studioExplodeProgress * 0.9;
           wrapperBand.scale.set(1 + studioExplodeProgress * 0.16, 1, 1 + studioExplodeProgress * 0.16);
 
           const coreScale = Math.max(0.001, studioExplodeProgress * 1.0);
           timberCoreGroup.scale.set(coreScale, coreScale, coreScale);
         }
+      }
+
+      // Explode / float for Digital tablet
+      if (homeStudioModels.digitalElements) {
+        const { screen, sheen, bezel, floatCards } = homeStudioModels.digitalElements;
+        const e = studioExplodeProgress;
+        bezel.position.z = 0.077 + e * 0.12;
+        screen.position.z = 0.079 + e * 0.3;
+        sheen.position.z = 0.081 + e * 0.42;
+        floatCards.forEach(c => {
+          const spread = 1 + e * 0.08;
+          c.mesh.position.set(
+            c.base.x * spread,
+            c.base.y * spread + Math.sin(elapsed * 1.4 + c.phase) * 0.06,
+            c.base.z + e * 0.3
+          );
+        });
       }
 
       // 3. Smooth Scale Transition between Modes
@@ -1202,266 +1397,700 @@
   }
 
   // --------------------------------------------------------------------------
-    // MODEL 2: LIFECYCLE — A Stack of Paper Turning into a Rustic Log
+  // LIFECYCLE — Tree → Log → Paper ream, travelling round a cradle-to-grave loop
   // --------------------------------------------------------------------------
   function buildLifecycleLogObject(group) {
-    // Stack of Paper (Left side)
-    const paperGroup = new THREE.Group();
-    paperGroup.position.set(-0.9, 0, 0);
-    const paperMat = new THREE.MeshLambertMaterial({ color: 0xfdfbf7 });
-    for (let i = 0; i < 16; i++) {
-      const sheet = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.035, 1.5), paperMat);
-      sheet.position.y = (i - 8) * 0.035;
-      sheet.rotation.y = (i % 2 === 0 ? 0.02 : -0.02);
-      sheet.castShadow = true;
-      paperGroup.add(sheet);
+    const g = new THREE.Group();
+    const plat = platformDisc(1.85, 0x6fb86a); plat.position.y = -0.75; g.add(plat);
+
+    // Circular "track" the paper travels around
+    const R = 1.32, baseY = -0.69;
+    const track = new THREE.Mesh(new THREE.TorusGeometry(R, 0.04, 8, 96), new THREE.MeshBasicMaterial({ color: 0xf4fbf2 }));
+    track.rotation.x = Math.PI / 2; track.position.y = baseY + 0.01; g.add(track);
+
+    function place(i, obj, spin) {
+      const a = (i / 5) * Math.PI * 2 + Math.PI / 2;
+      obj.position.set(Math.cos(a) * R, baseY, -Math.sin(a) * R);
+      obj.rotation.y = a + (spin || 0);
+      obj.scale.setScalar(1.28);
+      g.add(obj);
     }
-    group.add(paperGroup);
 
-    // Rustic Wood Log (Right side / connected)
-    const logGroup = new THREE.Group();
-    logGroup.position.set(0.9, 0, 0);
-    logGroup.rotation.z = Math.PI / 2; // horizontal log
+    // 1. Pine grove (raw timber source)
+    const grove = new THREE.Group();
+    [[0, 0, 1.0], [0.3, 0.2, 0.7], [-0.28, 0.18, 0.6]].forEach(([x, z, h]) => { const t = makePine(h); t.position.set(x, 0, z); grove.add(t); });
+    place(0, grove);
 
-    // Log bark
-    const barkMat = new THREE.MeshLambertMaterial({ color: 0x6d4c41, flatShading: true });
-    const logCylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.58, 1.6, 9), barkMat);
-    logCylinder.castShadow = true;
-    logGroup.add(logCylinder);
+    // 2. Log pile (harvest)
+    const logs = new THREE.Group();
+    const lg = (x, y, z) => { const l = makeLog(0.62, 0.11); l.position.set(x, y, z); logs.add(l); };
+    lg(0, 0.11, -0.12); lg(0, 0.11, 0.12); lg(0, 0.3, 0);
+    place(1, logs, Math.PI / 2);
 
-    // Tree growth rings at both ends
-    const ringMat = new THREE.MeshLambertMaterial({ color: 0xd7ccc8, flatShading: true });
-    const endCapTop = new THREE.Mesh(new THREE.CircleGeometry(0.53, 9), ringMat);
-    endCapTop.position.y = 0.801;
-    endCapTop.rotation.x = -Math.PI / 2;
-    logGroup.add(endCapTop);
+    // 3. Pulp mill (factory with smoking chimney)
+    const mill = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.38, 0.52), std(0xe9efe9, { roughness: 0.7 }));
+    wall.position.y = 0.19; mill.add(wall);
+    for (let i = 0; i < 2; i++) {
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.52, 3, 1), std(0x4e8f5c, { roughness: 0.6 }));
+      roof.rotation.z = Math.PI / 2; roof.rotation.x = Math.PI / 2; roof.rotation.y = 0;
+      roof.rotation.set(Math.PI / 2, 0, 0); roof.scale.set(1, 1, 0.6);
+      roof.position.set(-0.2 + i * 0.4, 0.44, 0); mill.add(roof);
+    }
+    const win = new THREE.MeshBasicMaterial({ color: 0x8fd0a0 });
+    [-0.22, 0.04, 0.26].forEach(x => { const w = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.12), win); w.position.set(x, 0.2, 0.262); mill.add(w); });
+    const chim = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.62, 12), std(0xb5654a, { roughness: 0.7 }));
+    chim.position.set(0.28, 0.5, -0.1); mill.add(chim);
+    const smoke = [];
+    for (let i = 0; i < 4; i++) {
+      const s = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 1), flat(0xdfe6e2, { transparent: true, opacity: 0.8 }));
+      s.userData.phase = i / 4; mill.add(s); smoke.push(s);
+    }
+    place(2, mill, Math.PI);
 
-    const endCapBottom = new THREE.Mesh(new THREE.CircleGeometry(0.56, 9), ringMat);
-    endCapBottom.position.y = -0.801;
-    endCapBottom.rotation.x = Math.PI / 2;
-    logGroup.add(endCapBottom);
+    // 4. Paper roll (product)
+    const rollG = new THREE.Group();
+    const coreMat = std(0xc9a26b, { roughness: 0.8 });
+    const paperMat = std(0xfdfcf7, { roughness: 0.85 });
+    const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.62, 28), [paperMat, coreMat, coreMat]);
+    roll.rotation.z = Math.PI / 2; roll.position.y = 0.3; rollG.add(roll);
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.64, 16), coreMat);
+    hole.rotation.z = Math.PI / 2; hole.position.y = 0.3; rollG.add(hole);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.012, 0.34), paperMat);
+    tail.position.set(0, 0.015, 0.4); rollG.add(tail);
+    place(3, rollG, Math.PI / 2);
 
-    // Small green sprout emerging from the log
-    const sproutMat = new THREE.MeshLambertMaterial({ color: 0x43a047, side: THREE.DoubleSide });
-    const sprout = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.45, 5), sproutMat);
-    sprout.position.set(0.55, 0.2, 0.1);
-    sprout.rotation.z = -Math.PI / 4;
-    logGroup.add(sprout);
+    // 5. Recycling bin (end of life → starts again)
+    const binG = new THREE.Group();
+    const binBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.24, 0.52, 4, 1), std(0x2f9a48, { roughness: 0.5 }));
+    binBody.rotation.y = Math.PI / 4; binBody.position.y = 0.26; binG.add(binBody);
+    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.07, 4, 1), std(0x1f7a3a, { roughness: 0.5 }));
+    lid.rotation.y = Math.PI / 4; lid.position.y = 0.55; binG.add(lid);
+    const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({
+      map: makeTex(128, 128, (ctx) => { ctx.clearRect(0, 0, 128, 128); drawLeaf(ctx, 64, 64, 40, '#e8f8e6'); }), transparent: true
+    }));
+    emblem.position.set(0, 0.28, 0.3); binG.add(emblem);
+    const sheetIn = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.34), paperMat);
+    sheetIn.position.set(0.02, 0.62, 0); sheetIn.rotation.set(0.5, 0.3, 0.2); binG.add(sheetIn);
+    place(4, binG, 0);
 
-    group.add(logGroup);
+    // Flow chevrons between stations (clockwise)
+    const chev = std(0x43a047, { emissive: 0x2e7d32, emissiveIntensity: 0.3 });
+    for (let i = 0; i < 5; i++) {
+      const a = ((i + 0.5) / 5) * Math.PI * 2 + Math.PI / 2;
+      const h = new THREE.Group();
+      h.position.set(Math.cos(a) * R, baseY + 0.1, -Math.sin(a) * R);
+      h.lookAt(h.position.x - Math.sin(a), h.position.y, h.position.z - Math.cos(a));
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.34, 4), chev);
+      cone.rotation.x = Math.PI / 2; h.add(cone); g.add(h);
+    }
 
-    // Gentle connecting arrow/bridge indicating transformation
-    const arrowMat = new THREE.MeshLambertMaterial({ color: 0x81c784 });
-    const arrowMesh = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.5, 6), arrowMat);
-    arrowMesh.rotation.z = -Math.PI / 2;
-    arrowMesh.position.set(0, 0, 0);
-    group.add(arrowMesh);
+    // Centre: new sapling on a little mound (the cycle begins again)
+    const mound = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.14, 14), flat(0x5d4128));
+    mound.position.y = baseY + 0.07; g.add(mound);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.03, 14), flat(0x66b05a)); cap.position.y = baseY + 0.15; g.add(cap);
+    const sprout = new THREE.Group();
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.026, 0.34, 6), flat(0x5d8f3a)); stem.position.y = 0.17; sprout.add(stem);
+    const l1 = leafMesh(0.3, 0x7ad06a); l1.position.set(0.1, 0.36, 0); l1.rotation.z = -1.0; sprout.add(l1);
+    const l2 = leafMesh(0.26, 0x66bb6a); l2.position.set(-0.09, 0.3, 0); l2.rotation.z = 1.0; sprout.add(l2);
+    sprout.position.y = baseY + 0.16; g.add(sprout);
+
+    g.rotation.x = 0.12;
+    g.scale.setScalar(0.9);
+    group.add(g);
+    group.userData.tick = (t) => {
+      smoke.forEach(s => {
+        const p = (t * 0.35 + s.userData.phase) % 1;
+        s.position.set(0.28 + p * 0.12, 0.85 + p * 0.55, -0.1);
+        s.scale.setScalar(0.6 + p * 0.9);
+        s.material.opacity = 0.8 * (1 - p);
+      });
+      sprout.rotation.y = Math.sin(t * 1.2) * 0.4;
+    };
   }
 
   // --------------------------------------------------------------------------
-  // MODEL 3: IMPACT — A Translucent Water Drop with a Small Tree
+  // IMPACT — Water droplet, felled stump and CO2 cloud
   // --------------------------------------------------------------------------
   function buildImpactWaterDropObject(group) {
-    // 1. Water Drop (Combination of bottom sphere + top cone)
-    const dropGroup = new THREE.Group();
-    dropGroup.position.set(-0.55, 0.1, 0);
+    const g = new THREE.Group();
+    const plat = platformDisc(1.75, 0x6fb86a); plat.position.y = -0.95; g.add(plat);
 
-    const waterMat = new THREE.MeshPhongMaterial({
-      color: 0x29b6f6,
-      emissive: 0x0288d1,
-      emissiveIntensity: 0.15,
-      specular: 0xffffff,
-      shininess: 90,
-      transparent: true,
-      opacity: 0.82
+    // Teardrop via a lathe profile
+    const R = 0.62, pts = [];
+    for (let i = 0; i <= 18; i++) { const th = (i / 18) * Math.PI * 0.62; pts.push(new THREE.Vector2(Math.sin(th) * R, -Math.cos(th) * R)); }
+    const last = pts[pts.length - 1];
+    const curve = new THREE.QuadraticBezierCurve(last.clone(), new THREE.Vector2(R * 0.62, 0.42), new THREE.Vector2(0.001, 1.35));
+    curve.getPoints(22).slice(1).forEach(p => pts.push(p));
+    const dropMat = new THREE.MeshPhysicalMaterial({
+      color: 0x34c3f0, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.86,
+      clearcoat: 1, clearcoatRoughness: 0.08, emissive: 0x0a7fb0, emissiveIntensity: 0.28
     });
+    const drop = new THREE.Mesh(new THREE.LatheGeometry(pts, 48), dropMat);
+    const dropGroup = new THREE.Group(); dropGroup.add(drop);
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
+    hl.scale.set(0.8, 1.6, 0.4); hl.position.set(-0.28, -0.1, 0.5); hl.rotation.z = 0.35; dropGroup.add(hl);
+    const hl2 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }));
+    hl2.position.set(-0.12, 0.35, 0.5); dropGroup.add(hl2);
+    dropGroup.position.set(-0.35, -0.05, 0);
+    g.add(dropGroup);
 
-    const dropBottom = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 16), waterMat);
-    dropBottom.position.y = -0.2;
-    dropGroup.add(dropBottom);
+    // Cut stump with rings and a young sprout
+    const stump = makeStump(0.42, 0.42); stump.position.set(0.95, -0.7, 0.35); g.add(stump);
+    const sprout = new THREE.Group();
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.35, 6), flat(0x5d8f3a)); stem.position.y = 0.17; sprout.add(stem);
+    const lf1 = leafMesh(0.3, 0x66bb6a); lf1.position.set(0.1, 0.36, 0); lf1.rotation.z = -1.0; sprout.add(lf1);
+    const lf2 = leafMesh(0.26, 0x81c784); lf2.position.set(-0.09, 0.3, 0); lf2.rotation.z = 1.0; sprout.add(lf2);
+    sprout.position.set(0.15, -0.74, 0.85); g.add(sprout);
 
-    const dropTop = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.25, 16), waterMat);
-    dropTop.position.y = 0.5;
-    dropGroup.add(dropTop);
+    // Low-poly CO2 cloud
+    const cloudMat = flat(0x9fb0aa, { transparent: true, opacity: 0.95 });
+    const cloud = new THREE.Group();
+    [[0, 0, 0, 0.3], [0.32, -0.04, 0.05, 0.24], [-0.3, -0.06, 0, 0.22], [0.1, 0.18, -0.05, 0.22]].forEach(([x, y, z, r]) => {
+      const p = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), cloudMat); p.position.set(x, y, z); cloud.add(p);
+    });
+    cloud.position.set(1.0, 0.85, -0.2); g.add(cloud);
 
-    group.add(dropGroup);
-
-    // 2. Small Thriving Tree (Right side, sustained by water conservation)
-    const treeGroup = new THREE.Group();
-    treeGroup.position.set(1.1, -0.4, 0);
-
-    const trunk = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.15, 0.22, 0.9, 8),
-      new THREE.MeshLambertMaterial({ color: 0x5d4037 })
-    );
-    trunk.position.y = 0.2;
-    treeGroup.add(trunk);
-
-    const leaves1 = new THREE.Mesh(
-      new THREE.ConeGeometry(0.8, 0.85, 7),
-      new THREE.MeshLambertMaterial({ color: 0x2e7d32, flatShading: true })
-    );
-    leaves1.position.y = 0.85;
-    treeGroup.add(leaves1);
-
-    const leaves2 = new THREE.Mesh(
-      new THREE.ConeGeometry(0.55, 0.75, 7),
-      new THREE.MeshLambertMaterial({ color: 0x43a047, flatShading: true })
-    );
-    leaves2.position.y = 1.35;
-    treeGroup.add(leaves2);
-
-    group.add(treeGroup);
+    g.scale.setScalar(0.95); g.position.y = 0.25;
+    group.add(g);
+    group.userData.tick = (t) => {
+      dropGroup.position.y = -0.05 + Math.sin(t * 1.8) * 0.06;
+      dropGroup.rotation.y = Math.sin(t * 0.8) * 0.2;
+      cloud.position.x = 1.0 + Math.sin(t * 0.7) * 0.08;
+    };
   }
 
   // --------------------------------------------------------------------------
-  // MODEL 4: COMPARE — A Paper Sheet Standing Next to a Modern Laptop
+  // COMPARE — Balance scale: paper stack vs. laptop
   // --------------------------------------------------------------------------
   function buildCompareLaptopObject(group) {
-    // 1. Paper Sheet (Left)
-    const sheetGroup = new THREE.Group();
-    sheetGroup.position.set(-1.1, 0, 0);
-    sheetGroup.rotation.y = 0.35;
+    const g = new THREE.Group();
+    const metal = std(0x7d8f86, { metalness: 0.55, roughness: 0.35 });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.0, 0.16, 32), std(0x2e7d32, { roughness: 0.4 }));
+    base.position.y = -1.25; g.add(base);
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 2.2, 14), metal);
+    pillar.position.y = -0.15; g.add(pillar);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 16), std(0xf1d58a, { metalness: 0.6, roughness: 0.3 }));
+    cap.position.y = 0.98; g.add(cap);
 
-    const paper = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 1.6, 0.025),
-      new THREE.MeshLambertMaterial({ color: 0xfcfbf7 })
-    );
-    paper.castShadow = true;
-    sheetGroup.add(paper);
+    const beam = new THREE.Group(); beam.position.y = 0.98; g.add(beam);
+    const L = 1.5;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(L * 2, 0.08, 0.1), std(0x2e7d32, { roughness: 0.4 })); beam.add(bar);
+    [-L, L].forEach(x => { const k = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 12), std(0xf1d58a, { metalness: 0.6 })); k.position.x = x; beam.add(k); });
 
-    // Add printed lines texture effect on paper
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0x78909c });
-    for (let i = 0; i < 5; i++) {
-      const textLine = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.03, 0.03), lineMat);
-      textLine.position.set(0, 0.5 - i * 0.22, 0.015);
-      sheetGroup.add(textLine);
+    function makePan() {
+      const pan = new THREE.Group();
+      const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.5, 0.07, 32), std(0xe8efe9, { metalness: 0.3, roughness: 0.4 }));
+      pan.add(dish);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.02, 8, 40), std(0xf1d58a, { metalness: 0.6 }));
+      rim.rotation.x = Math.PI / 2; rim.position.y = 0.035; pan.add(rim);
+      const top = new THREE.Vector3(0, 0.95, 0);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + 0.5;
+        pan.add(cylBetween(top, new THREE.Vector3(Math.cos(a) * 0.58, 0.03, Math.sin(a) * 0.58), 0.012, std(0x9aa9a1, { metalness: 0.6 })));
+      }
+      return pan;
     }
-    group.add(sheetGroup);
+    const panL = makePan(), panR = makePan();
+    g.add(panL, panR);
 
-    // 2. Modern Slim Laptop (Right)
-    const laptopGroup = new THREE.Group();
-    laptopGroup.position.set(0.9, -0.3, 0);
-    laptopGroup.rotation.y = -0.45;
+    // Paper pile (left)
+    const pile = makeSheetStack(0.74, 0.98, 12, 0.045); pile.position.y = 0.05; panL.add(pile);
+    const topSheet = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.9), new THREE.MeshBasicMaterial({
+      map: makeTex(256, 340, (ctx, w, h) => {
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#9fb3a2';
+        for (let i = 0; i < 12; i++) { ctx.fillRect(28, 34 + i * 24, i % 4 === 3 ? 120 : 200, 7); }
+      })
+    }));
+    topSheet.rotation.x = -Math.PI / 2; topSheet.position.y = 0.05 + 11 * 0.045 + 0.025; panL.add(topSheet);
 
-    // Laptop Base / Keyboard deck
-    const silverMat = new THREE.MeshLambertMaterial({ color: 0x90a4ae });
-    const darkDeckMat = new THREE.MeshLambertMaterial({ color: 0x37474f });
-    const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 1.1), silverMat);
-    base.position.y = 0;
-    laptopGroup.add(base);
+    // Laptop (right)
+    const lap = new THREE.Group();
+    const lb = new THREE.Mesh(extrudeRound(0.96, 0.66, 0.05, 0.05, 0.015), std(0xb8c4bd, { metalness: 0.4, roughness: 0.35 }));
+    lb.rotation.x = -Math.PI / 2; lap.add(lb);
+    const scr = new THREE.Group(); scr.position.set(0, 0.03, -0.31); scr.rotation.x = -0.28;
+    const sb = new THREE.Mesh(extrudeRound(0.96, 0.64, 0.05, 0.04, 0.012), std(0x2b3a33, { metalness: 0.3 }));
+    sb.position.y = 0.32; scr.add(sb);
+    const sTex = makeTex(384, 256, (ctx, w, h) => {
+      const gr = ctx.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#e8f5e9'); gr.addColorStop(1, '#c8e6c9');
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#1b5e20'; ctx.fillRect(0, 0, w, 40);
+      drawLeaf(ctx, 26, 20, 11, '#a5e3a0');
+      [0.4, 0.6, 0.8, 1.0].forEach((v, i) => { ctx.fillStyle = i === 3 ? '#2e7d32' : '#81c784'; ctx.fillRect(40 + i * 56, 230 - v * 150, 36, v * 150); });
+      ctx.fillStyle = '#1b3d1c'; ctx.font = '800 54px Arial'; ctx.fillText('-92%', 262, 120); ctx.font = '600 16px Arial'; ctx.fillText('carbon', 266, 144);
+    });
+    const sp = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.54), new THREE.MeshBasicMaterial({ map: sTex }));
+    sp.position.set(0, 0.32, 0.031); scr.add(sp);
+    lap.add(scr);
+    lap.position.y = 0.06; lap.scale.setScalar(0.92); panR.add(lap);
+    const lf = leafMesh(0.34, 0x66bb6a); lf.position.set(0.0, 0.95, 0.0); lap.add(lf);
 
-    // Keyboard recess
-    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.065, 0.55), darkDeckMat);
-    keyboard.position.set(0, 0.01, -0.12);
-    laptopGroup.add(keyboard);
+    g.scale.setScalar(0.8); g.position.y = 0.0;
+    group.add(g);
+    group.userData.tick = (t) => {
+      const a = 0.17 + 0.05 * Math.sin(t * 1.3);   // paper side is heavier
+      beam.rotation.z = a;
+      const H = 0.95 * 1.0;
+      panL.position.set(-L * Math.cos(a), 0.98 - L * Math.sin(a) - H, 0);
+      panR.position.set(L * Math.cos(a), 0.98 + L * Math.sin(a) - H, 0);
+      lf.rotation.y = t * 1.5; lf.position.y = 0.95 + Math.sin(t * 2) * 0.05;
+    };
+    group.userData.tick(0);
+  }
 
-    // Laptop Screen Lid (Open at 115 degrees)
-    const screenLid = new THREE.Group();
-    screenLid.position.set(0, 0.03, -0.52);
-    screenLid.rotation.x = -Math.PI * 0.38;
+  // --------------------------------------------------------------------------
+  // CALCULATOR — Desk calculator printing a sheet, with live sheet count
+  // --------------------------------------------------------------------------
+  function buildCalculatorObject(group) {
+    const g = new THREE.Group();
+    const bodyGeo = extrudeRound(1.45, 2.05, 0.2, 0.26, 0.04);
+    g.add(new THREE.Mesh(bodyGeo, std(0xeaf3e8, { roughness: 0.4, metalness: 0.15 })));
+    const front = 0.13 + 0.04;
 
-    const screenBack = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.05, 0.05), silverMat);
-    screenBack.position.y = 0.52;
-    screenLid.add(screenBack);
+    const dTex = makeTex(512, 220, (ctx, w, h) => {
+      ctx.fillStyle = '#10241a'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#6df0a0'; ctx.font = '800 96px Poppins, Arial'; ctx.textAlign = 'right'; ctx.fillText('12,500', w - 28, 118);
+      ctx.fillStyle = '#9ad6a8'; ctx.font = '600 28px Poppins, Arial'; ctx.fillText('SHEETS = 1.5 TREES', w - 28, 178);
+      ctx.fillStyle = '#6df0a0'; ctx.textAlign = 'left'; ctx.font = '700 24px Poppins, Arial'; ctx.fillText('PAPER \u2022 EARTH', 28, 40);
+    });
+    const disp = new THREE.Mesh(extrudeRound(1.2, 0.5, 0.07, 0.03, 0.01), std(0x10241a, { roughness: 0.2 }));
+    disp.position.set(0, 0.68, front); g.add(disp);
+    const dpl = new THREE.Mesh(new THREE.PlaneGeometry(1.14, 0.49), new THREE.MeshBasicMaterial({ map: dTex }));
+    dpl.position.set(0, 0.68, front + 0.032); g.add(dpl);
 
-    // Glowing Teal Eco Display Screen
-    const screenDisplay = new THREE.Mesh(
-      new THREE.BoxGeometry(1.35, 0.92, 0.055),
-      new THREE.MeshBasicMaterial({ color: 0x004d40 })
-    );
-    screenDisplay.position.set(0, 0.52, 0.005);
-    screenLid.add(screenDisplay);
+    const keyGeo = extrudeRound(0.26, 0.22, 0.06, 0.06, 0.02);
+    const labels = [['7','8','9','+'],['4','5','6','-'],['1','2','3','\u00d7'],['C','0','.','=']];
+    labels.forEach((row, r) => row.forEach((lab, c) => {
+      const isOp = '+-\u00d7='.indexOf(lab) >= 0, isC = lab === 'C';
+      const mat = std(isOp ? 0x2e7d32 : (isC ? 0xe57373 : 0xffffff), { roughness: 0.45 });
+      const k = new THREE.Mesh(keyGeo, mat);
+      k.position.set(-0.49 + c * 0.33, 0.1 - r * 0.3, front + 0.03);
+      g.add(k);
+      const t = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshBasicMaterial({
+        map: makeTex(64, 64, (ctx, w, h) => { ctx.clearRect(0, 0, w, h); ctx.fillStyle = isOp || isC ? '#ffffff' : '#1b3d1c'; ctx.font = '700 40px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(lab, 32, 34); }),
+        transparent: true
+      }));
+      t.position.set(k.position.x, k.position.y, front + 0.095);
+      g.add(t);
+    }));
 
-    // Mint UI bar on screen
-    const displayBar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.9, 0.12, 0.06),
-      new THREE.MeshBasicMaterial({ color: 0x80cbc4 })
-    );
-    displayBar.position.set(0, 0.55, 0.01);
-    screenLid.add(displayBar);
+    // Printed sheet coming out of the top
+    const sheetTex = makeTex(256, 340, (ctx, w, h) => {
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#c9d8c9';
+      for (let i = 0; i < 9; i++) ctx.fillRect(26, 30 + i * 28, i % 3 === 2 ? 110 : 200, 8);
+      ctx.fillStyle = '#2e7d32'; ctx.fillRect(26, 290, 90, 12);
+    });
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.2, 0.015), [std(0xffffff), std(0xffffff), std(0xffffff), std(0xffffff), new THREE.MeshBasicMaterial({ map: sheetTex }), new THREE.MeshBasicMaterial({ map: sheetTex })]);
+    sheet.position.set(0.1, 1.45, -0.04); sheet.rotation.set(-0.08, 0.1, -0.1); g.add(sheet);
 
-    laptopGroup.add(screenLid);
-    group.add(laptopGroup);
+    const lf = leafMesh(0.4, 0x66bb6a); lf.position.set(-1.0, 0.9, 0.35); g.add(lf);
+
+    g.rotation.x = -0.1; g.scale.setScalar(0.94); g.position.y = -0.1;
+    group.add(g);
+    group.userData.tick = (t) => { lf.position.y = 0.9 + Math.sin(t * 1.8) * 0.08; lf.rotation.y = t; };
+  }
+
+  // --------------------------------------------------------------------------
+  // ABOUT — Idea light-bulb with a living leaf as the filament
+  // --------------------------------------------------------------------------
+  function buildAboutBulbObject(group) {
+    const g = new THREE.Group();
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffefb0, transparent: true, opacity: 0.4, roughness: 0.05, metalness: 0,
+      clearcoat: 1, clearcoatRoughness: 0.05, emissive: 0xffd95a, emissiveIntensity: 0.28
+    });
+    const pts = [];
+    for (let i = 0; i <= 24; i++) { const th = (i / 24) * Math.PI * 0.78; pts.push(new THREE.Vector2(Math.sin(th) * 0.92, 0.35 + Math.cos(th) * 0.92)); }
+    pts.push(new THREE.Vector2(0.5, -0.22), new THREE.Vector2(0.42, -0.62));
+    const bulb = new THREE.Mesh(new THREE.LatheGeometry(pts, 40), glassMat);
+    g.add(bulb);
+    const outline = new THREE.Mesh(new THREE.LatheGeometry(pts, 40), new THREE.MeshBasicMaterial({ color: 0xd9b84a, transparent: true, opacity: 0.6, side: THREE.BackSide }));
+    outline.scale.set(1.035, 1.0, 1.035); g.add(outline);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(1.15, 24, 18), new THREE.MeshBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.13, side: THREE.BackSide }));
+    glow.position.y = 0.35; g.add(glow);
+
+    // Screw base
+    const metal = std(0xaab4ae, { metalness: 0.65, roughness: 0.35 });
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.42 - i * 0.02, 0.42 - i * 0.02, 0.16, 24), metal);
+      ring.position.y = -0.7 - i * 0.18; g.add(ring);
+      const groove = new THREE.Mesh(new THREE.TorusGeometry(0.42 - i * 0.02, 0.018, 6, 24), std(0x7e8a84, { metalness: 0.6 }));
+      groove.rotation.x = Math.PI / 2; groove.position.y = -0.62 - i * 0.18; g.add(groove);
+    }
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.12, 0.12, 16), std(0x3d4a43, { metalness: 0.4 }));
+    tip.position.y = -1.3; g.add(tip);
+
+    // Leaf filament + supports
+    const lf = leafMesh(0.85, 0x66d36e, 0x2e9e4a); lf.position.y = 0.35; lf.rotation.z = -0.25; lf.material.emissiveIntensity = 0.6; g.add(lf);
+    const supp = std(0x8a9690, { metalness: 0.6 });
+    g.add(cylBetween(new THREE.Vector3(-0.08, -0.5, 0), new THREE.Vector3(-0.05, 0.0, 0), 0.015, supp));
+    g.add(cylBetween(new THREE.Vector3(0.08, -0.5, 0), new THREE.Vector3(0.05, 0.0, 0), 0.015, supp));
+
+    // Radiating light rays
+    const rays = new THREE.Group();
+    const rayMat = new THREE.MeshBasicMaterial({ color: 0xf6c945 });
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const r = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.04), rayMat);
+      r.position.set(Math.cos(a) * 1.55, 0.35 + Math.sin(a) * 1.55, 0);
+      r.rotation.z = a - Math.PI / 2; rays.add(r);
+    }
+    g.add(rays);
+
+    g.scale.setScalar(0.85); g.position.y = 0.3;
+    group.add(g);
+    group.userData.tick = (t) => {
+      rays.children.forEach((r, i) => { const s = 0.8 + 0.35 * Math.sin(t * 2.4 + i); r.scale.y = s; });
+      lf.rotation.y = Math.sin(t * 1.2) * 0.4;
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // CONTACT — Envelope opening to reveal a letter, sealed with a leaf
+  // --------------------------------------------------------------------------
+  function buildContactEnvelopeObject(group) {
+    const g = new THREE.Group();
+    const W = 1.9, H = 1.25;
+    const back = new THREE.Mesh(new THREE.BoxGeometry(W, H, 0.04), std(0x8a6a35, { roughness: 0.8 }));
+    back.position.z = -0.05; g.add(back);
+
+    const letterTex = makeTex(256, 320, (ctx, w, h) => {
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#1b5e20'; ctx.font = '700 22px Arial'; ctx.fillText('Dear Earth,', 24, 46);
+      ctx.fillStyle = '#c9d8c9'; for (let i = 0; i < 8; i++) ctx.fillRect(24, 70 + i * 26, i % 3 === 2 ? 120 : 208, 7);
+      drawLeaf(ctx, 205, 276, 18, '#43a047');
+    });
+    const letter = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 0.012), [std(0xffffff), std(0xffffff), std(0xffffff), std(0xffffff), new THREE.MeshBasicMaterial({ map: makeTex(320, 200, (c, w, h) => { c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); c.fillStyle = '#1b5e20'; c.font = '700 26px Arial'; c.fillText('Dear Earth,', 24, 48); c.fillStyle = '#c9d8c9'; for (let i = 0; i < 5; i++) c.fillRect(24, 74 + i * 24, i % 3 === 2 ? 140 : 250, 7); drawLeaf(c, 270, 166, 16, '#43a047'); }) }), std(0xffffff)]);
+    letter.position.z = -0.02; g.add(letter);
+
+    const fs = new THREE.Shape();
+    fs.moveTo(-W / 2, -H / 2); fs.lineTo(W / 2, -H / 2); fs.lineTo(W / 2, H / 2); fs.lineTo(0, 0.0); fs.lineTo(-W / 2, H / 2); fs.closePath();
+    const frontPanel = new THREE.Mesh(new THREE.ExtrudeGeometry(fs, { depth: 0.04, bevelEnabled: false }), std(0xb08c52, { roughness: 0.8 }));
+    frontPanel.position.z = 0.0; g.add(frontPanel);
+
+    const flapPivot = new THREE.Group(); flapPivot.position.set(0, H / 2, 0.01); g.add(flapPivot);
+    const ft = new THREE.Shape();
+    ft.moveTo(-W / 2, 0); ft.lineTo(W / 2, 0); ft.lineTo(0, -H / 2); ft.closePath();
+    const flap = new THREE.Mesh(new THREE.ExtrudeGeometry(ft, { depth: 0.03, bevelEnabled: false }), std(0xa07d45, { roughness: 0.8 }));
+    flapPivot.add(flap);
+    const seal = new THREE.Mesh(new THREE.CircleGeometry(0.17, 28), new THREE.MeshBasicMaterial({
+      map: makeTex(128, 128, (ctx, w, h) => { ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(64, 64, 62, 0, 7); ctx.fill(); drawLeaf(ctx, 64, 64, 34, '#c8f0c4'); })
+    }));
+    seal.position.set(0, -H / 2 + 0.2, 0.04); flapPivot.add(seal);
+
+    g.rotation.x = -0.12; g.scale.setScalar(1.05); g.position.y = 0.25;
+    group.add(g);
+    group.userData.tick = (t) => {
+      const th = 1.2 - 1.15 * Math.cos(t * 0.9);       // 0.05 (closed) … 2.35 (open)
+      flapPivot.rotation.x = th;
+      const open = Math.max(0, Math.min(1, (th - 0.4) / 1.9));
+      letter.position.y = -0.2 + open * 0.55;
+      seal.visible = th < 1.5;
+    };
+    group.userData.tick(0);
+  }
+
+  // --------------------------------------------------------------------------
+  // RESOURCES — Stack of reference books + magnifying glass
+  // --------------------------------------------------------------------------
+  function buildResourcesBooksObject(group) {
+    const g = new THREE.Group();
+    const specs = [
+      [1.7, 0.3, 1.15, 0x1b6e34, 0.0], [1.5, 0.26, 1.05, 0x2f8f9d, 0.12],
+      [1.6, 0.32, 1.1, 0xc4673a, -0.1], [1.3, 0.24, 0.95, 0x5b7fa6, 0.18]
+    ];
+    let y = -0.95;
+    specs.forEach(([w, h, d, c, rot]) => {
+      const b = makeBook(w, h, d, c); b.position.set(Math.sin(y * 3) * 0.05, y + h / 2, 0); b.rotation.y = rot; g.add(b); y += h;
+    });
+    const lf = leafMesh(0.45, 0x66bb6a); lf.position.set(0.35, y + 0.22, 0.2); lf.rotation.z = -0.5; g.add(lf);
+
+    const mag = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 14, 40), std(0xe0b64a, { metalness: 0.7, roughness: 0.3 }));
+    mag.add(ring);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.5, 36), new THREE.MeshPhysicalMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.32, roughness: 0.05, clearcoat: 1 }));
+    mag.add(lens);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.8, 12), std(0x3d2f24, { roughness: 0.6 }));
+    handle.position.set(0.52, -0.52, 0); handle.rotation.z = Math.PI / 4; mag.add(handle);
+    mag.position.set(1.05, 0.35, 0.65); mag.rotation.y = -0.4;
+    g.add(mag);
+
+    g.scale.setScalar(0.88); g.position.y = 0.05;
+    group.add(g);
+    group.userData.tick = (t) => { mag.position.y = 0.35 + Math.sin(t * 1.6) * 0.07; mag.rotation.z = Math.sin(t * 1.1) * 0.12; lf.rotation.y = t * 0.8; };
+  }
+
+  // --------------------------------------------------------------------------
+  // PRIVACY — Green shield with a padlock
+  // --------------------------------------------------------------------------
+  function buildPrivacyShieldObject(group) {
+    const g = new THREE.Group();
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 1.25); sh.lineTo(0.95, 0.92); sh.lineTo(0.95, 0.1);
+    sh.bezierCurveTo(0.95, -0.6, 0.45, -1.05, 0, -1.3);
+    sh.bezierCurveTo(-0.45, -1.05, -0.95, -0.6, -0.95, 0.1);
+    sh.lineTo(-0.95, 0.92); sh.closePath();
+    const outerMat = std(0x1f7a3a, { roughness: 0.35, metalness: 0.25, emissive: 0x0d3d1d, emissiveIntensity: 0.2 });
+    const outer = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.18, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.06, bevelSegments: 4, curveSegments: 20 }), outerMat);
+    outer.position.z = -0.09; g.add(outer);
+    const inner = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 20 }), std(0x5cc26a, { roughness: 0.35, emissive: 0x2e9e4a, emissiveIntensity: 0.15 }));
+    inner.scale.set(0.8, 0.8, 1); inner.position.set(0, 0.0, 0.2); g.add(inner);
+
+    // Padlock
+    const lockBody = new THREE.Mesh(extrudeRound(0.55, 0.46, 0.08, 0.14, 0.03), std(0xfdfcf7, { roughness: 0.3, metalness: 0.15 }));
+    lockBody.position.set(0, -0.12, 0.33); g.add(lockBody);
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.05, 12, 24, Math.PI), std(0xd9e0dc, { metalness: 0.8, roughness: 0.25 }));
+    shackle.position.set(0, 0.1, 0.33); g.add(shackle);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.06, 20), new THREE.MeshBasicMaterial({ color: 0x1b3d1c }));
+    hole.position.set(0, -0.1, 0.43); g.add(hole);
+    const slot = new THREE.Mesh(new THREE.PlaneGeometry(0.04, 0.12), new THREE.MeshBasicMaterial({ color: 0x1b3d1c }));
+    slot.position.set(0, -0.2, 0.43); g.add(slot);
+    const lf = leafMesh(0.3, 0xa8e6a1); lf.position.set(0.55, 0.75, 0.3); lf.rotation.z = -0.6; g.add(lf);
+
+    g.scale.setScalar(0.88);
+    group.add(g);
+    group.userData.tick = (t) => { outerMat.emissiveIntensity = 0.2 + 0.12 * Math.sin(t * 2); lf.rotation.y = t; };
+  }
+
+  // --------------------------------------------------------------------------
+  // ACTION PLAN — Clipboard with a progress checklist
+  // --------------------------------------------------------------------------
+  function buildActionPlanObject(group) {
+    const g = new THREE.Group();
+    const board = new THREE.Mesh(extrudeRound(1.6, 2.2, 0.12, 0.1, 0.03), std(0xb98a56, { roughness: 0.7 }));
+    g.add(board);
+    const listTex = makeTex(384, 520, (ctx, w, h) => {
+      ctx.fillStyle = '#fffdf7'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#1b5e20'; ctx.font = '800 34px Poppins, Arial'; ctx.fillText('ACTION PLAN', 36, 70);
+      ctx.fillStyle = '#2e7d32'; ctx.fillRect(36, 86, 120, 5);
+      const rows = ['Go duplex', 'Digitise files', 'Recycle bin', 'Track usage', 'Share goals'];
+      rows.forEach((r, i) => {
+        const y = 140 + i * 74;
+        ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 4; canvasRoundRect(ctx, 36, y - 24, 40, 40, 8); ctx.stroke();
+        if (i < 3) { ctx.fillStyle = '#2e7d32'; canvasRoundRect(ctx, 36, y - 24, 40, 40, 8); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(46, y - 4); ctx.lineTo(54, y + 4); ctx.lineTo(68, y - 14); ctx.stroke(); }
+        ctx.fillStyle = i < 3 ? '#4a6b4b' : '#1b3d1c'; ctx.font = '600 28px Poppins, Arial'; ctx.fillText(r, 96, y + 8);
+        ctx.fillStyle = '#e1ece1'; ctx.fillRect(96, y + 22, 200 - i * 14, 4);
+      });
+    });
+    const paper = new THREE.Mesh(new THREE.PlaneGeometry(1.34, 1.34 * 520 / 384 * 0.9), new THREE.MeshBasicMaterial({ map: listTex }));
+    paper.scale.y = 1.0; paper.position.set(0, -0.08, 0.09); g.add(paper);
+    const clipBase = new THREE.Mesh(extrudeRound(0.62, 0.24, 0.05, 0.08, 0.02), std(0xaab4ae, { metalness: 0.7, roughness: 0.3 }));
+    clipBase.position.set(0, 1.08, 0.12); g.add(clipBase);
+    const clipHole = new THREE.Mesh(new THREE.CircleGeometry(0.05, 16), new THREE.MeshBasicMaterial({ color: 0x59655e }));
+    clipHole.position.set(0, 1.08, 0.17); g.add(clipHole);
+
+    const badge = new THREE.Group();
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.34, 32), new THREE.MeshBasicMaterial({
+      map: makeTex(128, 128, (ctx, w, h) => { ctx.fillStyle = '#2e9e4a'; ctx.beginPath(); ctx.arc(64, 64, 62, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(36, 66); ctx.lineTo(56, 86); ctx.lineTo(92, 44); ctx.stroke(); })
+    }));
+    badge.add(disc); badge.position.set(0.95, 0.65, 0.5); g.add(badge);
+
+    const pencil = new THREE.Group();
+    const pb = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.1, 6), std(0xf2c230, { roughness: 0.5 }));
+    const pt = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.14, 6), std(0xe9c9a0)); pt.position.y = -0.62; pt.rotation.x = Math.PI;
+    const pl = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.05, 6), std(0x2b2b2b)); pl.position.y = -0.7; pl.rotation.x = Math.PI;
+    pencil.add(pb, pt, pl); pencil.position.set(-1.0, -0.35, 0.3); pencil.rotation.z = 0.28; g.add(pencil);
+
+    g.rotation.x = -0.05; g.scale.setScalar(0.8); g.position.y = 0.0;
+    group.add(g);
+    group.userData.tick = (t) => { badge.position.y = 0.65 + Math.sin(t * 2) * 0.08; badge.rotation.y = Math.sin(t) * 0.4; };
   }
 
   // --------------------------------------------------------------------------
   // MODEL 5: SOLUTIONS — Recycling Arrows Symbol Made of Organic Leaves
   // --------------------------------------------------------------------------
   function buildSolutionsRecycleObject(group) {
-    const recycleGroup = new THREE.Group();
-    const arrowCount = 3;
-    const radius = 1.15;
+    const emblem = new THREE.Group();
 
-    // 3 Curved Arrow Arms positioned in an equilateral triangle (120 deg apart)
-    for (let i = 0; i < arrowCount; i++) {
-      const angle = (i * 2 * Math.PI) / arrowCount;
-      const armGroup = new THREE.Group();
-      armGroup.rotation.z = angle;
-
-      // Curved leafy body
-      const curveGeo = new THREE.TorusGeometry(radius, 0.12, 8, 14, Math.PI * 0.42);
-      const leafGreen = (i % 2 === 0) ? 0x2e7d32 : 0x43a047;
-      const leafMat = new THREE.MeshLambertMaterial({ color: leafGreen, flatShading: true });
-      const curveMesh = new THREE.Mesh(curveGeo, leafMat);
-      armGroup.add(curveMesh);
-
-      // Arrowhead Cone
-      const headGeo = new THREE.ConeGeometry(0.24, 0.5, 6);
-      const headMat = new THREE.MeshLambertMaterial({ color: 0x81c784, flatShading: true });
-      const headMesh = new THREE.Mesh(headGeo, headMat);
-
-      // Position arrowhead at the tip of the torus segment
-      headMesh.position.set(
-        Math.cos(Math.PI * 0.42) * radius,
-        Math.sin(Math.PI * 0.42) * radius,
-        0
-      );
-      headMesh.rotation.z = Math.PI * 0.42 - Math.PI / 2;
-      armGroup.add(headMesh);
-
-      recycleGroup.add(armGroup);
+    // One chasing-arrow: a curved band that ends in an arrowhead (flat shape, extruded)
+    function makeArrowShape(a0, a1, rIn, rOut, headLen, headFlare) {
+      const rMid = (rIn + rOut) / 2;
+      const shape = new THREE.Shape();
+      const steps = 28;
+      for (let i = 0; i <= steps; i++) {
+        const a = a0 + (a1 - a0) * (i / steps);
+        const x = Math.cos(a) * rOut, y = Math.sin(a) * rOut;
+        i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y);
+      }
+      shape.lineTo(Math.cos(a1) * (rOut + headFlare), Math.sin(a1) * (rOut + headFlare));
+      shape.lineTo(Math.cos(a1 + headLen) * rMid, Math.sin(a1 + headLen) * rMid);
+      shape.lineTo(Math.cos(a1) * (rIn - headFlare), Math.sin(a1) * (rIn - headFlare));
+      for (let i = steps; i >= 0; i--) {
+        const a = a0 + (a1 - a0) * (i / steps);
+        shape.lineTo(Math.cos(a) * rIn, Math.sin(a) * rIn);
+      }
+      shape.closePath();
+      return shape;
     }
 
-    // Central small sprout inside recycling circle
-    const centerLeafMat = new THREE.MeshLambertMaterial({ color: 0x81c784, side: THREE.DoubleSide });
-    const centerLeaf = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 5), centerLeafMat);
-    centerLeaf.position.y = 0;
-    recycleGroup.add(centerLeaf);
+    const extrude = { depth: 0.24, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.06, bevelSegments: 4, curveSegments: 24 };
+    const armColors = [0x1b6e34, 0x2f9a48, 0x5cb85c];
+    for (let i = 0; i < 3; i++) {
+      const geo = new THREE.ExtrudeGeometry(makeArrowShape(0.08, 1.32, 0.86, 1.2, 0.5, 0.2), extrude);
+      geo.center();
+      const mat = new THREE.MeshStandardMaterial({
+        color: armColors[i], roughness: 0.38, metalness: 0.08, emissive: armColors[i], emissiveIntensity: 0.06
+      });
+      const arm = new THREE.Mesh(geo, mat);
+      // geo.center() moved the arrow to the origin; push it back out to the ring position
+      const holder = new THREE.Group();
+      const ref = makeArrowShape(0.08, 1.32, 0.86, 1.2, 0.5, 0.2);
+      const box = new THREE.Box2().setFromPoints(ref.getPoints(40));
+      const c = box.getCenter(new THREE.Vector2());
+      arm.position.set(c.x, c.y, 0);
+      holder.add(arm);
+      holder.rotation.z = i * (Math.PI * 2 / 3);
+      emblem.add(holder);
+    }
 
-    group.add(recycleGroup);
+    // Glowing leaf in the centre of the loop
+    const leafShape = new THREE.Shape();
+    leafShape.moveTo(0, -0.5);
+    leafShape.bezierCurveTo(0.5, -0.25, 0.5, 0.3, 0, 0.55);
+    leafShape.bezierCurveTo(-0.5, 0.3, -0.5, -0.25, 0, -0.5);
+    const leafGeo = new THREE.ExtrudeGeometry(leafShape, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 3, curveSegments: 20 });
+    leafGeo.center();
+    const leaf = new THREE.Mesh(leafGeo, new THREE.MeshStandardMaterial({
+      color: 0x2e9e4a, roughness: 0.45, metalness: 0.0, emissive: 0x1b5e20, emissiveIntensity: 0.2
+    }));
+    leaf.rotation.z = -0.35;
+    leaf.scale.setScalar(0.85);
+    emblem.add(leaf);
+
+    // Faint disc behind the emblem for depth
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(1.55, 48),
+      new THREE.MeshBasicMaterial({ color: 0xd9f2dc, transparent: true, opacity: 0.35 })
+    );
+    disc.position.z = -0.25;
+    emblem.add(disc);
+
+    // Tiny floating paper sheets that get "recycled"
+    const sheetMat = new THREE.MeshLambertMaterial({ color: 0xfdfcf7, side: THREE.DoubleSide });
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.4;
+      const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.27, 0.012), sheetMat);
+      sheet.position.set(Math.cos(a) * 1.75, Math.sin(a) * 1.75, (i % 2 ? 0.2 : -0.15));
+      sheet.rotation.set(0.4 * i, 0.6, a);
+      emblem.add(sheet);
+    }
+
+    emblem.rotation.x = -0.12;
+    group.add(emblem);
   }
 
   // --------------------------------------------------------------------------
-  // MODEL 6: DEFAULT / OTHER PAGES — Floating Eco Orb with Leaves
+  // MODEL 6: DEFAULT / OTHER PAGES — "Paper Earth" low-poly globe,
+  // wrapped by a ring of paper sheets and leaves, with drifting clouds
   // --------------------------------------------------------------------------
   function buildDefaultEcoOrbObject(group) {
-    const orbGroup = new THREE.Group();
+    const earth = new THREE.Group();
 
-    // Central translucent emerald sphere
-    const orbMat = new THREE.MeshPhongMaterial({
-      color: 0x2e7d32,
-      emissive: 0x1b5e20,
-      specular: 0x81c784,
-      shininess: 60,
-      transparent: true,
-      opacity: 0.85,
-      flatShading: true
-    });
-    const orb = new THREE.Mesh(new THREE.DodecahedronGeometry(0.95, 1), orbMat);
-    orbGroup.add(orb);
-
-    // Orbiting leaf rings
-    const ringMat = new THREE.MeshLambertMaterial({ color: 0x81c784, side: THREE.DoubleSide });
-    for (let i = 0; i < 4; i++) {
-      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.45, 5), ringMat);
-      const a = (i * Math.PI) / 2;
-      leaf.position.set(Math.cos(a) * 1.5, Math.sin(a) * 0.6, Math.sin(a) * 1.2);
-      leaf.rotation.x = Math.PI / 3;
-      orbGroup.add(leaf);
+    // Deterministic land/ocean noise (same position => same value, so no cracks)
+    function landNoise(x, y, z) {
+      return Math.sin(x * 2.3 + 1.3) * Math.cos(y * 2.6 + 0.4) +
+             Math.sin(z * 2.9 + 0.5) * Math.cos(x * 1.8 + y * 1.2) * 0.8 +
+             Math.sin((x + z) * 4.1) * 0.25;
     }
 
-    group.add(orbGroup);
+    // Low-poly globe: ocean + raised green continents + polar caps
+    const globeGeo = new THREE.IcosahedronGeometry(1.15, 4);
+    const pos = globeGeo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const v = new THREE.Vector3();
+    const c = new THREE.Color();
+    const oceanA = new THREE.Color(0x1d6fa3), oceanB = new THREE.Color(0x2b8fbf);
+    const landA = new THREE.Color(0x1f6b2a), landB = new THREE.Color(0x4f9e45), sand = new THREE.Color(0xc9d98a);
+
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).normalize();
+      const n = landNoise(v.x, v.y, v.z);
+      if (Math.abs(v.y) > 0.9) {
+        c.set(0xf4fbf6);
+        v.multiplyScalar(1.15 + 0.015);
+      } else if (n > 0.18) {
+        const t = Math.min(1, (n - 0.18) / 1.0);
+        c.copy(landA).lerp(landB, t);
+        if (n < 0.3) c.lerp(sand, 0.55);
+        v.multiplyScalar(1.15 + 0.03 + t * 0.05);
+      } else {
+        c.copy(oceanA).lerp(oceanB, (n + 1.5) / 1.7 * 0.6);
+        v.multiplyScalar(1.15);
+      }
+      pos.setXYZ(i, v.x, v.y, v.z);
+      colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+    }
+    globeGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    globeGeo.computeVertexNormals();
+    const globe = new THREE.Mesh(
+      globeGeo,
+      new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 10, specular: 0x1a2a22 })
+    );
+    earth.add(globe);
+
+    // Soft atmosphere glow
+    earth.add(new THREE.Mesh(
+      new THREE.SphereGeometry(1.32, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0xbfeedd, transparent: true, opacity: 0.16, side: THREE.BackSide })
+    ));
+
+    // Drifting low-poly clouds
+    const cloudMat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true, transparent: true, opacity: 0.92 });
+    [[0.5, 0.75, 0.95], [-0.95, 0.2, 0.8], [0.2, -0.7, -1.05]].forEach(([x, y, z]) => {
+      const cloud = new THREE.Group();
+      [[0, 0, 0, 0.14], [0.14, -0.02, 0.02, 0.1], [-0.13, -0.02, 0, 0.09]].forEach(([dx, dy, dz, r]) => {
+        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), cloudMat);
+        puff.position.set(dx, dy, dz);
+        cloud.add(puff);
+      });
+      const dir = new THREE.Vector3(x, y, z).normalize().multiplyScalar(1.38);
+      cloud.position.copy(dir);
+      cloud.lookAt(0, 0, 0);
+      earth.add(cloud);
+    });
+
+    // Tilted orbit ring of paper sheets + leaves
+    const ring = new THREE.Group();
+    const paperMat = new THREE.MeshLambertMaterial({ color: 0xfdfcf7, side: THREE.DoubleSide });
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xb9c7b5 });
+    const leafMat = new THREE.MeshPhongMaterial({ color: 0x66bb6a, flatShading: true, side: THREE.DoubleSide });
+    const COUNT = 12, R = 1.8;
+    for (let i = 0; i < COUNT; i++) {
+      const a = (i / COUNT) * Math.PI * 2;
+      const holder = new THREE.Group();
+      holder.position.set(Math.cos(a) * R, Math.sin(a * 2) * 0.06, Math.sin(a) * R);
+      holder.rotation.y = -a;
+      if (i % 3 === 2) {
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 5), leafMat);
+        leaf.rotation.z = Math.PI / 2;
+        leaf.scale.set(1, 1, 0.35);
+        holder.add(leaf);
+      } else {
+        const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.46, 0.014), paperMat);
+        sheet.rotation.set(0.25, 0, (i % 2 ? 0.18 : -0.18));
+        holder.add(sheet);
+        for (let l = 0; l < 3; l++) {
+          const line = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.014, 0.004), lineMat);
+          line.position.set(0, 0.1 - l * 0.09, 0.012);
+          sheet.add(line);
+        }
+      }
+      ring.add(holder);
+    }
+    ring.rotation.set(0.32, 0, -0.38);
+    earth.add(ring);
+
+    // Thin guide halo for the ring
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(R, 0.008, 6, 96),
+      new THREE.MeshBasicMaterial({ color: 0x9ed8b0, transparent: true, opacity: 0.55 })
+    );
+    halo.rotation.set(Math.PI / 2, 0, 0);
+    ring.add(halo);
+
+    earth.rotation.z = 0.18;
+    earth.scale.setScalar(0.8);
+    group.add(earth);
   }
 
   // ==========================================================================
@@ -1509,11 +2138,12 @@
           headerMainObjectGroup.rotation.y += 0.007;
 
           // Gentle floating bob
-          headerMainObjectGroup.position.y = Math.sin(elapsed * 1.6) * 0.07;
+          headerMainObjectGroup.position.y = 0.55 + Math.sin(elapsed * 1.6) * 0.07;
 
           // Smooth mouse tilt lerp
           headerMainObjectGroup.rotation.x += (headerTargetRotX - headerMainObjectGroup.rotation.x) * 0.05;
           headerMainObjectGroup.rotation.z += (-headerTargetRotY * 0.35 - headerMainObjectGroup.rotation.z) * 0.05;
+          if (headerMainObjectGroup.userData && headerMainObjectGroup.userData.tick) headerMainObjectGroup.userData.tick(elapsed);
         }
       }
       headerRenderer.render(headerScene, headerCamera);
