@@ -216,14 +216,19 @@
     headerRenderer.shadowMap.enabled = true;
     headerRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
     headerContainer.appendChild(headerRenderer.domElement);
+    const proLook = !!(window.ProModels && window.ProModels.installLook(headerRenderer, headerScene, {}));
 
     // Warm Ambient Light + Key Sunlight + Mint Fill Light
-    const amb = new THREE.AmbientLight(0xfffbf2, 0.95);
+    const amb = new THREE.AmbientLight(0xfffbf2, proLook ? 0.2 : 0.95);
     headerScene.add(amb);
 
     const sun = new THREE.DirectionalLight(0xffffff, 1.15);
     sun.position.set(4, 7, 5);
     sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.left = -4; sun.shadow.camera.right = 4; sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 20;
+    sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
     headerScene.add(sun);
 
     const mintFill = new THREE.DirectionalLight(0x81c784, 0.5);
@@ -236,6 +241,7 @@
 
     // Build the specific 3D model according to data-scene attribute
     buildSceneObject(sceneType, headerMainObjectGroup);
+    if (window.ProModels) window.ProModels.applyLook(headerMainObjectGroup);
 
     // Mouse tilt tracking
     window.addEventListener('mousemove', (e) => {
@@ -298,7 +304,7 @@
     return new THREE.MeshStandardMaterial(Object.assign({ color: color, roughness: 0.5, metalness: 0.08 }, o || {}));
   }
   function flat(color, o) {
-    return new THREE.MeshPhongMaterial(Object.assign({ color: color, flatShading: true, shininess: 8, specular: 0x111111 }, o || {}));
+    return new THREE.MeshStandardMaterial(Object.assign({ color: color, flatShading: true, roughness: 0.7, metalness: 0.02 }, o || {}));
   }
   function extrudeRound(w, h, r, depth, bevel) {
     const g = new THREE.ExtrudeGeometry(roundRectShape(w, h, r), {
@@ -457,7 +463,7 @@
   let dragVelX = 0, dragVelY = 0;
   let updateHomeStudioScene = null;
 
-  function createRabbitScreenTexture() {
+  function createCompanionScreenTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 640;
@@ -474,7 +480,7 @@
 
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 22px system-ui, sans-serif';
-    ctx.fillText('r1', 440, 52);
+    ctx.fillText('eco', 436, 52);
 
     // Eco Leaf indicator dot
     ctx.fillStyle = '#4caf50';
@@ -482,41 +488,52 @@
     ctx.arc(412, 45, 9, 0, Math.PI * 2);
     ctx.fill();
 
-    // Glowing Rabbit Silhouette (Exact mascot from reference video)
+    // Original mascot: a friendly sprout character with a leaf crown
     ctx.save();
     ctx.translate(256, 310);
 
-    // Soft Orange/Green Glow Aura
-    const radGlow = ctx.createRadialGradient(0, 0, 10, 0, 0, 140);
-    radGlow.addColorStop(0, 'rgba(235, 77, 38, 0.35)');
-    radGlow.addColorStop(1, 'rgba(235, 77, 38, 0)');
+    const radGlow = ctx.createRadialGradient(0, 0, 10, 0, 0, 150);
+    radGlow.addColorStop(0, 'rgba(109, 240, 160, 0.38)');
+    radGlow.addColorStop(1, 'rgba(109, 240, 160, 0)');
     ctx.fillStyle = radGlow;
     ctx.beginPath();
-    ctx.arc(0, 0, 140, 0, Math.PI * 2);
+    ctx.arc(0, 0, 150, 0, Math.PI * 2);
     ctx.fill();
 
-    // Head Base (Rounded droplet/egg)
-    ctx.fillStyle = '#ffffff';
+    // Body (round seed)
+    ctx.fillStyle = '#f4fff6';
     ctx.beginPath();
-    ctx.ellipse(0, 20, 64, 54, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 28, 66, 58, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Left Ear
+    // Stem + two leaves
+    ctx.strokeStyle = '#6df0a0';
+    ctx.lineWidth = 9;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.ellipse(-26, -58, 17, 50, -0.22, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Right Ear
+    ctx.moveTo(0, -28);
+    ctx.quadraticCurveTo(4, -62, 0, -88);
+    ctx.stroke();
+    ctx.fillStyle = '#4cd985';
     ctx.beginPath();
-    ctx.ellipse(26, -58, 17, 50, 0.22, 0, Math.PI * 2);
+    ctx.ellipse(-30, -86, 34, 15, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#7af0aa';
+    ctx.beginPath();
+    ctx.ellipse(30, -96, 34, 15, 0.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // Cute Dark Eyes
+    // Eyes and smile
     ctx.fillStyle = '#0f1418';
     ctx.beginPath();
-    ctx.arc(-22, 18, 6.5, 0, Math.PI * 2);
-    ctx.arc(22, 18, 6.5, 0, Math.PI * 2);
+    ctx.arc(-22, 22, 7, 0, Math.PI * 2);
+    ctx.arc(22, 22, 7, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#0f1418';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 36, 14, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
 
     ctx.restore();
 
@@ -537,6 +554,7 @@
 
   function buildHomeStudioShowcase(group) {
     homeStudioModels = {};
+    homeStudioModels.proUpdaters = [];
 
     // ------------------------------------------------------------------------
     // 1. MODEL R1: Rabbit R1 Eco Companion Device (Direct Reference Video Match)
@@ -556,7 +574,7 @@
     backMesh.position.z = -0.1;
     r1BackShell.add(backMesh);
     const backLogo = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), new THREE.MeshBasicMaterial({
-      map: makeTex(128, 128, (ctx) => { ctx.clearRect(0, 0, 128, 128); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(64, 70, 24, 0, 7); ctx.fill(); [[48, 20], [80, 20]].forEach(([x, y]) => { ctx.beginPath(); ctx.ellipse(x, y + 12, 8, 24, 0, 0, 7); ctx.fill(); }); }),
+      map: makeTex(128, 128, (ctx) => { ctx.clearRect(0, 0, 128, 128); drawLeaf(ctx, 64, 64, 40, 'rgba(255,255,255,0.92)'); }),
       transparent: true
     }));
     backLogo.position.z = -0.1 - 0.1 - 0.056; backLogo.rotation.y = Math.PI;
@@ -593,7 +611,7 @@
 
     // Screen
     const r1ScreenGroup = new THREE.Group();
-    const glass = new THREE.Mesh(new THREE.PlaneGeometry(hw + 0.02, hh + 0.02), new THREE.MeshBasicMaterial({ map: createRabbitScreenTexture() }));
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(hw + 0.02, hh + 0.02), new THREE.MeshBasicMaterial({ map: createCompanionScreenTexture() }));
     glass.position.set(0, hy + hh / 2, 0.075);
     r1ScreenGroup.add(glass);
     r1Inner.add(r1ScreenGroup);
@@ -637,60 +655,15 @@
     homeStudioModels.ream = reamGroup;
     reamGroup.scale.set(0.001, 0.001, 0.001); // Inactive initially (r1 is active)
 
+    const reamPro = window.ProModels.ream();
     const reamInner = new THREE.Group();
+    reamInner.add(reamPro);
+    const reamPlat = platformDisc(1.45, 0xd6edd3); reamPlat.position.y = -0.62; reamInner.add(reamPlat);
+    reamInner.scale.setScalar(0.92); reamInner.position.y = 0.05;
     reamGroup.add(reamInner);
-    const RW = 1.5, RD = 1.05, RH = 0.34;
-
-    const edgeTex = makeTex(256, 64, (ctx, w, h) => {
-      ctx.fillStyle = '#efece0'; ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = 'rgba(105,120,105,0.6)'; ctx.lineWidth = 1.2;
-      for (let y = 2; y < h; y += 3) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-    });
-    const topTex = makeTex(256, 192, (ctx, w, h) => {
-      ctx.fillStyle = '#f6f4ea'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#c3d0c3';
-      for (let i = 0; i < 9; i++) ctx.fillRect(24, 22 + i * 16, i % 4 === 3 ? 110 : 200, 5);
-    });
-    const edgeMat = new THREE.MeshStandardMaterial({ map: edgeTex, roughness: 0.85 });
-    const topMat = new THREE.MeshStandardMaterial({ map: topTex, roughness: 0.85 });
-    const plain = std(0xe9e6d8, { roughness: 0.9 });
-    function makeStack(topFace) {
-      const gp = new THREE.Group();
-      gp.add(new THREE.Mesh(new THREE.BoxGeometry(RW, RH, RD), [edgeMat, edgeMat, topFace ? topMat : plain, plain, edgeMat, edgeMat]));
-      return gp;
-    }
-    const topStack = makeStack(true), bottomStack = makeStack(false);
-    topStack.position.y = RH / 2; bottomStack.position.y = -RH / 2;
-    reamInner.add(topStack, bottomStack);
-
-    // Kraft belly band with label
-    const wrapperBand = new THREE.Group();
-    const labelTex = makeTex(256, 256, (ctx, w, h) => {
-      ctx.fillStyle = '#c9a26b'; ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)'; for (let i = 0; i < 40; i++) ctx.fillRect(Math.random() * w, Math.random() * h, 30, 1);
-      ctx.fillStyle = '#fffaf0'; canvasRoundRect(ctx, 24, 56, 208, 144, 14); ctx.fill();
-      drawLeaf(ctx, 70, 112, 26, '#2e7d32');
-      ctx.fillStyle = '#1b3d1c'; ctx.font = '800 34px Arial'; ctx.textAlign = 'left'; ctx.fillText('500', 110, 112);
-      ctx.font = '700 20px Arial'; ctx.fillText('SHEETS \u00b7 A4', 100, 140);
-      ctx.fillStyle = '#6d5a3c'; ctx.font = '600 16px Arial'; ctx.fillText('80 GSM \u00b7 VIRGIN PULP', 40, 178);
-    });
-    const kraft = std(0xc9a26b, { roughness: 0.8 });
-    const labelMat = new THREE.MeshStandardMaterial({ map: labelTex, roughness: 0.8 });
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.66, RH * 2 + 0.04, RD + 0.04), [kraft, kraft, kraft, kraft, labelMat, kraft]);
-    wrapperBand.add(band);
-    reamInner.add(wrapperBand);
-
-    // Timber core revealed when the ream is exploded
-    const timberCoreGroup = new THREE.Group();
-    const capTex = new THREE.MeshStandardMaterial({ map: ringTexture(), roughness: 0.7 });
-    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.37, 0.5, 24), [flat(0x7d5233), capTex, capTex]);
-    timberCoreGroup.add(core);
-    const sp = leafMesh(0.36, 0x66bb6a); sp.position.set(0.0, 0.5, 0.0); sp.rotation.z = -0.4; timberCoreGroup.add(sp);
-    timberCoreGroup.scale.set(0.001, 0.001, 0.001);
-    reamInner.add(timberCoreGroup);
-
-    const reamPlat = platformDisc(1.35, 0xd6edd3); reamPlat.position.y = -0.62; reamInner.add(reamPlat);
-    reamInner.scale.setScalar(0.82); reamInner.position.y = 0.05;
-    homeStudioModels.reamElements = { topStack, bottomStack, wrapperBand, timberCoreGroup };
+    const reamParts = reamPro.userData.parts;
+    homeStudioModels.reamElements = { topStack: reamParts.topStack, bottomStack: reamParts.bottomStack, wrapperBand: reamParts.wrapperBand, timberCoreGroup: reamParts.timberCoreGroup };
+    homeStudioModels.proUpdaters.push(reamPro.userData.update);
 
     // ------------------------------------------------------------------------
     // 3. MODEL DIGITAL: Ultra-thin E-Reader Tablet with Tactile Dial & Circuit Nodes
@@ -700,213 +673,17 @@
     homeStudioModels.digital = digitalGroup;
     digitalGroup.scale.set(0.001, 0.001, 0.001);
 
-    // ---- helpers -------------------------------------------------------
-    function roundRectShape(w, h, r) {
-      const x = -w / 2, y = -h / 2, sh = new THREE.Shape();
-      sh.moveTo(x + r, y);
-      sh.lineTo(x + w - r, y);  sh.quadraticCurveTo(x + w, y, x + w, y + r);
-      sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-      sh.lineTo(x + r, y + h);  sh.quadraticCurveTo(x, y + h, x, y + h - r);
-      sh.lineTo(x, y + r);      sh.quadraticCurveTo(x, y, x + r, y);
-      return sh;
-    }
-    function canvasRoundRect(ctx, x, y, w, h, r) {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-    }
-    function drawLeaf(ctx, cx, cy, size, color) {
-      ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.6); ctx.fillStyle = color;
-      ctx.beginPath(); ctx.moveTo(0, size);
-      ctx.bezierCurveTo(size * 0.95, size * 0.5, size * 0.95, -size * 0.6, 0, -size);
-      ctx.bezierCurveTo(-size * 0.95, -size * 0.6, -size * 0.95, size * 0.5, 0, size); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = size * 0.07;
-      ctx.beginPath(); ctx.moveTo(0, size * 0.85); ctx.lineTo(0, -size * 0.6); ctx.stroke();
-      ctx.restore();
-    }
-    function makeTex(w, h, draw) {
-      const c = document.createElement('canvas'); c.width = w; c.height = h;
-      const ctx = c.getContext('2d'); draw(ctx, w, h);
-      const t = new THREE.CanvasTexture(c);
-      if (THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
-      t.anisotropy = 4;
-      return t;
-    }
-
-    // ---- tablet body (rounded aluminium slab, standing upright) ----------
-    const TW = 1.75, TH = 2.35, TD = 0.1;
-    const tablet = new THREE.Group();
-    digitalGroup.add(tablet);
-
-    const bodyGeo = new THREE.ExtrudeGeometry(roundRectShape(TW, TH, 0.2), {
-      depth: TD, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 4, curveSegments: 18
-    });
-    bodyGeo.translate(0, 0, -TD / 2);
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xcfd8d2, roughness: 0.38, metalness: 0.25 }));
-    body.castShadow = true;
-    tablet.add(body);
-
-    const front = TD / 2 + 0.027;
-    const bezel = new THREE.Mesh(
-      new THREE.ShapeGeometry(roundRectShape(TW - 0.06, TH - 0.06, 0.17), 18),
-      new THREE.MeshBasicMaterial({ color: 0x10241a })
-    );
-    bezel.position.z = front;
-    tablet.add(bezel);
-
-    // Live-looking dashboard on the screen
-    const screenTex = makeTex(640, 860, (ctx, w, h) => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.save(); canvasRoundRect(ctx, 0, 0, w, h, 38); ctx.clip();
-      const g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, '#f4fbf2'); g.addColorStop(1, '#e3f3e0');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-
-      // header
-      ctx.fillStyle = '#1b5e20'; ctx.fillRect(0, 0, w, 96);
-      drawLeaf(ctx, 56, 48, 22, '#a5e3a0');
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 30px Poppins, Arial, sans-serif'; ctx.textBaseline = 'middle';
-      ctx.fillText('PAPERLESS OFFICE', 92, 50);
-      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.arc(w - 48, 48, 9, 0, 7); ctx.fill();
-
-      // big stat
-      ctx.fillStyle = '#1b3d1c'; ctx.font = '800 118px Poppins, Arial, sans-serif'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText('92%', 44, 252);
-      ctx.fillStyle = '#4a6b4b'; ctx.font = '600 28px Poppins, Arial, sans-serif';
-      ctx.fillText('lifetime carbon cut vs. paper', 48, 296);
-
-      // bar chart card
-      ctx.fillStyle = '#ffffff'; canvasRoundRect(ctx, 36, 330, w - 72, 270, 26); ctx.fill();
-      const bars = [0.35, 0.5, 0.68, 0.82, 1.0];
-      bars.forEach((v, i) => {
-        const bw = 62, gap = 28, x = 74 + i * (bw + gap), bh = 190 * v, y = 566 - bh;
-        const bg = ctx.createLinearGradient(0, y, 0, 566);
-        bg.addColorStop(0, i === 4 ? '#2e7d32' : '#81c784'); bg.addColorStop(1, i === 4 ? '#1b5e20' : '#a5d6a7');
-        ctx.fillStyle = bg; canvasRoundRect(ctx, x, y, bw, bh, 12); ctx.fill();
-      });
-      ctx.strokeStyle = 'rgba(46,125,50,0.18)'; ctx.lineWidth = 2;
-      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(60, 400 + i * 62); ctx.lineTo(w - 60, 400 + i * 62); ctx.stroke(); }
-
-      // document rows
-      for (let i = 0; i < 3; i++) {
-        const y = 628 + i * 64;
-        ctx.fillStyle = '#ffffff'; canvasRoundRect(ctx, 36, y, w - 72, 52, 16); ctx.fill();
-        ctx.fillStyle = '#c8e6c9'; canvasRoundRect(ctx, 52, y + 11, 30, 30, 8); ctx.fill();
-        ctx.fillStyle = '#d6e4d6'; canvasRoundRect(ctx, 100, y + 16, 250 - i * 30, 9, 5); ctx.fill();
-        ctx.fillStyle = '#e6eee6'; canvasRoundRect(ctx, 100, y + 32, 160 - i * 20, 7, 4); ctx.fill();
-        ctx.fillStyle = '#2e7d32'; ctx.font = '700 22px Poppins, Arial, sans-serif'; ctx.textBaseline = 'middle';
-        ctx.fillText('\u2713', w - 76, y + 27);
-      }
-      ctx.restore();
-    });
-    const screen = new THREE.Mesh(
-      new THREE.PlaneGeometry(TW - 0.14, (TW - 0.14) * 860 / 640),
-      new THREE.MeshBasicMaterial({ map: screenTex, transparent: true })
-    );
-    screen.scale.y = (TH - 0.14) / ((TW - 0.14) * 860 / 640);
-    screen.position.z = front + 0.002;
-    tablet.add(screen);
-
-    // Soft glass sheen across the screen
-    const sheen = new THREE.Mesh(
-      new THREE.PlaneGeometry(TW - 0.14, TH - 0.14),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.07 })
-    );
-    sheen.position.z = front + 0.004;
-    sheen.rotation.z = 0.0;
-    tablet.add(sheen);
-
-    // Back logo
-    const logoTex = makeTex(256, 256, (ctx, w, h) => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(46,125,50,0.18)'; ctx.beginPath(); ctx.arc(128, 128, 112, 0, 7); ctx.fill();
-      drawLeaf(ctx, 128, 128, 70, '#2e7d32');
-    });
-    const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), new THREE.MeshBasicMaterial({ map: logoTex, transparent: true }));
-    logo.position.z = -(front);
-    logo.rotation.y = Math.PI;
-    tablet.add(logo);
-
-    // Knurled tactile scroll dial on the right edge
-    const dialHolder = new THREE.Group();
-    dialHolder.position.set(TW / 2 + 0.02, 0.55, 0);
-    const dial = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.15, 0.15, 0.2, 24),
-      new THREE.MeshStandardMaterial({ color: 0x43a047, roughness: 0.35, metalness: 0.3 })
-    );
-    dial.rotation.z = Math.PI / 2;
-    dialHolder.add(dial);
-    for (let k = 0; k < 14; k++) {
-      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.025), new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.5 }));
-      const ang = (k / 14) * Math.PI * 2;
-      rib.position.set(0, Math.cos(ang) * 0.15, Math.sin(ang) * 0.15);
-      rib.rotation.x = ang;
-      dialHolder.add(rib);
-    }
-    tablet.add(dialHolder);
-    homeStudioModels.digitalWheel = dialHolder;
-
-    // ---- floating UI cards (cloud / document / chart) ---------------------
-    function makeCard(drawIcon) {
-      const tex = makeTex(256, 256, (ctx, w, h) => {
-        ctx.clearRect(0, 0, w, h);
-        ctx.shadowColor = 'rgba(27,94,32,0.25)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
-        ctx.fillStyle = '#ffffff'; canvasRoundRect(ctx, 28, 24, 200, 200, 46); ctx.fill();
-        ctx.shadowColor = 'transparent';
-        drawIcon(ctx);
-      });
-      return new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.72), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
-    }
-    const cardCloud = makeCard((ctx) => {
-      ctx.fillStyle = '#e8f5e9'; ctx.beginPath();
-      ctx.arc(104, 128, 34, 0, 7); ctx.arc(138, 112, 40, 0, 7); ctx.arc(170, 132, 30, 0, 7); ctx.fill();
-      ctx.fillRect(104, 128, 66, 34);
-      ctx.strokeStyle = '#43a047'; ctx.lineWidth = 6; ctx.stroke();
-      drawLeaf(ctx, 138, 134, 22, '#2e7d32');
-    });
-    const cardDoc = makeCard((ctx) => {
-      ctx.fillStyle = '#f1f8f1'; canvasRoundRect(ctx, 86, 70, 84, 112, 10); ctx.fill();
-      ctx.strokeStyle = '#43a047'; ctx.lineWidth = 6; ctx.stroke();
-      ctx.fillStyle = '#81c784';
-      [96, 114, 132].forEach((y, i) => { canvasRoundRect(ctx, 98, y, 60 - i * 12, 7, 3); ctx.fill(); });
-      ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(160, 168, 20, 0, 7); ctx.fill();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.beginPath();
-      ctx.moveTo(151, 168); ctx.lineTo(158, 175); ctx.lineTo(170, 160); ctx.stroke();
-    });
-    const cardChart = makeCard((ctx) => {
-      [[84, 40], [114, 70], [144, 100]].forEach(([x, hh], i) => {
-        ctx.fillStyle = ['#a5d6a7', '#66bb6a', '#2e7d32'][i]; canvasRoundRect(ctx, x, 180 - hh, 22, hh, 7); ctx.fill();
-      });
-      ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 6; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(84, 98); ctx.lineTo(120, 80); ctx.lineTo(170, 56); ctx.stroke();
-    });
-    const floatCards = [
-      { mesh: cardCloud, base: new THREE.Vector3(-1.38, 0.82, 0.55), phase: 0.0 },
-      { mesh: cardDoc,   base: new THREE.Vector3(1.42, -0.55, 0.75), phase: 1.7 },
-      { mesh: cardChart, base: new THREE.Vector3(-1.22, -0.95, 0.9), phase: 3.1 }
-    ];
-    floatCards.forEach(c => { c.mesh.position.copy(c.base); digitalGroup.add(c.mesh); });
-
-    // ---- orbiting data nodes (glowing mint gems) -------------------------
-    const nodesGroup = new THREE.Group();
-    const nodeMat = new THREE.MeshStandardMaterial({ color: 0x8fe39a, emissive: 0x4caf50, emissiveIntensity: 0.55, roughness: 0.3, flatShading: true });
-    const nodeGeo = new THREE.OctahedronGeometry(0.09, 0);
-    for (let n = 0; n < 6; n++) {
-      const node = new THREE.Mesh(nodeGeo, nodeMat);
-      const angle = (n / 6) * Math.PI * 2;
-      node.position.set(Math.cos(angle) * 1.95, (n % 2 === 0 ? 0.55 : -0.5), Math.sin(angle) * 1.95);
-      nodesGroup.add(node);
-    }
-    digitalGroup.add(nodesGroup);
-    homeStudioModels.digitalNodes = nodesGroup;
-
-    homeStudioModels.digitalElements = { screen, sheen, bezel, floatCards };
-    // Fit the whole tablet scene comfortably inside the stage
+    const digitalPro = window.ProModels.tablet();
     const digitalInner = new THREE.Group();
-    digitalGroup.children.slice().forEach(k => { digitalGroup.remove(k); digitalInner.add(k); });
-    digitalInner.scale.setScalar(0.7);
+    digitalInner.add(digitalPro);
+    digitalInner.scale.setScalar(0.74);
     digitalInner.rotation.x = -0.05;
     digitalGroup.add(digitalInner);
+    const dParts = digitalPro.userData.parts;
+    homeStudioModels.digitalWheel = dParts.dial;
+    homeStudioModels.digitalNodes = dParts.nodes;
+    homeStudioModels.digitalElements = { screen: dParts.screen, sheen: dParts.sheen, bezel: dParts.bezel, floatCards: dParts.floatCards };
+    homeStudioModels.proUpdaters.push(digitalPro.userData.update);
 
     // ------------------------------------------------------------------------
     // 4. MODEL FOREST: Rustic Birch Log with Annual Rings & Living Foliage Sprout
@@ -916,33 +693,13 @@
     homeStudioModels.forest = forestGroup;
     forestGroup.scale.set(0.001, 0.001, 0.001);
 
+    const forestPro = window.ProModels.forestIsland();
     const isle = new THREE.Group();
+    isle.add(forestPro);
+    isle.scale.setScalar(0.74); isle.position.y = 0.05; isle.rotation.x = 0.14;
     forestGroup.add(isle);
-    // Floating island: soil underside + grass top
-    const soil = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 0.55, 0.9, 10, 1), flat(0x7a5a3a));
-    soil.position.y = -0.55; isle.add(soil);
-    const strata = new THREE.Mesh(new THREE.CylinderGeometry(1.46, 1.38, 0.1, 10), flat(0x5f4429)); strata.position.y = -0.14; isle.add(strata);
-    const grass = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.46, 0.16, 10), flat(0x66b05a)); grass.position.y = -0.01; isle.add(grass);
-    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 0), flat(0x9aa6a0)); rock.position.set(-0.8, 0.12, 1.0); isle.add(rock);
-
-    // Standing pines (deterministic layout)
-    const treeSpots = [
-      [-0.85, -0.35, 1.35], [-0.2, -0.85, 1.1], [0.6, -0.55, 1.5], [1.0, 0.1, 1.0], [-1.0, 0.45, 0.95], [0.1, 0.1, 1.25], [0.75, 0.75, 0.8], [-0.35, 0.85, 0.85]
-    ];
-    treeSpots.forEach(([x, z, h]) => { const t = makePine(h); t.position.set(x, 0.07, z); t.rotation.y = x * 3; isle.add(t); });
-
-    // Felled area: stump + log pile
-    const stump = makeStump(0.2, 0.2); stump.position.set(0.1, 0.17, 1.05); isle.add(stump);
-    const lg = makeLog(0.7, 0.11); lg.position.set(0.85, 0.18, 1.05); lg.rotation.y = 0.5; isle.add(lg);
-    const lg2 = makeLog(0.7, 0.11); lg2.position.set(0.95, 0.18, 1.3); lg2.rotation.y = 0.35; isle.add(lg2);
-    const lg3 = makeLog(0.7, 0.11); lg3.position.set(0.9, 0.38, 1.18); lg3.rotation.y = 0.42; isle.add(lg3);
-
-    // A new sapling restoring the forest
-    const sap = leafMesh(0.3, 0x7ad06a); sap.position.set(-0.3, 0.32, 1.15); isle.add(sap);
-    const sapStem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.2, 5), flat(0x5d8f3a)); sapStem.position.set(-0.3, 0.17, 1.15); isle.add(sapStem);
-
-    isle.scale.setScalar(0.72); isle.position.y = -0.2; isle.rotation.x = 0.0;
     homeStudioModels.forestIsle = isle;
+    homeStudioModels.proUpdaters.push(forestPro.userData.update);
 
     // ------------------------------------------------------------------------
     // 5. MODEL CIRCULAR: Origami Faceted Sustainable Tree & Circular Recycling Arrows
@@ -1072,8 +829,8 @@
       if (homeStudioModels.reamElements) {
         const { topStack, bottomStack, wrapperBand, timberCoreGroup } = homeStudioModels.reamElements;
         if (topStack && bottomStack && wrapperBand && timberCoreGroup) {
-          topStack.position.y = 0.17 + studioExplodeProgress * 0.95;
-          bottomStack.position.y = -0.17 - studioExplodeProgress * 0.7;
+          topStack.position.y = 0.18 + studioExplodeProgress * 0.95;
+          bottomStack.position.y = -0.18 - studioExplodeProgress * 0.7;
           wrapperBand.position.z = studioExplodeProgress * 0.9;
           wrapperBand.scale.set(1 + studioExplodeProgress * 0.16, 1, 1 + studioExplodeProgress * 0.16);
 
@@ -1086,9 +843,9 @@
       if (homeStudioModels.digitalElements) {
         const { screen, sheen, bezel, floatCards } = homeStudioModels.digitalElements;
         const e = studioExplodeProgress;
-        bezel.position.z = 0.077 + e * 0.12;
-        screen.position.z = 0.079 + e * 0.3;
-        sheen.position.z = 0.081 + e * 0.42;
+        bezel.position.z = bezel.userData.z0 + e * 0.12;
+        screen.position.z = screen.userData.z0 + e * 0.3;
+        sheen.position.z = sheen.userData.z0 + e * 0.42;
         floatCards.forEach(c => {
           const spread = 1 + e * 0.08;
           c.mesh.position.set(
@@ -1098,6 +855,8 @@
           );
         });
       }
+
+      if (homeStudioModels.proUpdaters) homeStudioModels.proUpdaters.forEach(fn => fn(elapsed));
 
       // 3. Smooth Scale Transition between Modes
       const modes = ['r1', 'ream', 'digital', 'forest'];
@@ -1984,113 +1743,11 @@
   // wrapped by a ring of paper sheets and leaves, with drifting clouds
   // --------------------------------------------------------------------------
   function buildDefaultEcoOrbObject(group) {
-    const earth = new THREE.Group();
-
-    // Deterministic land/ocean noise (same position => same value, so no cracks)
-    function landNoise(x, y, z) {
-      return Math.sin(x * 2.3 + 1.3) * Math.cos(y * 2.6 + 0.4) +
-             Math.sin(z * 2.9 + 0.5) * Math.cos(x * 1.8 + y * 1.2) * 0.8 +
-             Math.sin((x + z) * 4.1) * 0.25;
-    }
-
-    // Low-poly globe: ocean + raised green continents + polar caps
-    const globeGeo = new THREE.IcosahedronGeometry(1.15, 4);
-    const pos = globeGeo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const v = new THREE.Vector3();
-    const c = new THREE.Color();
-    const oceanA = new THREE.Color(0x1d6fa3), oceanB = new THREE.Color(0x2b8fbf);
-    const landA = new THREE.Color(0x1f6b2a), landB = new THREE.Color(0x4f9e45), sand = new THREE.Color(0xc9d98a);
-
-    for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i).normalize();
-      const n = landNoise(v.x, v.y, v.z);
-      if (Math.abs(v.y) > 0.9) {
-        c.set(0xf4fbf6);
-        v.multiplyScalar(1.15 + 0.015);
-      } else if (n > 0.18) {
-        const t = Math.min(1, (n - 0.18) / 1.0);
-        c.copy(landA).lerp(landB, t);
-        if (n < 0.3) c.lerp(sand, 0.55);
-        v.multiplyScalar(1.15 + 0.03 + t * 0.05);
-      } else {
-        c.copy(oceanA).lerp(oceanB, (n + 1.5) / 1.7 * 0.6);
-        v.multiplyScalar(1.15);
-      }
-      pos.setXYZ(i, v.x, v.y, v.z);
-      colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
-    }
-    globeGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    globeGeo.computeVertexNormals();
-    const globe = new THREE.Mesh(
-      globeGeo,
-      new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 10, specular: 0x1a2a22 })
-    );
-    earth.add(globe);
-
-    // Soft atmosphere glow
-    earth.add(new THREE.Mesh(
-      new THREE.SphereGeometry(1.32, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0xbfeedd, transparent: true, opacity: 0.16, side: THREE.BackSide })
-    ));
-
-    // Drifting low-poly clouds
-    const cloudMat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true, transparent: true, opacity: 0.92 });
-    [[0.5, 0.75, 0.95], [-0.95, 0.2, 0.8], [0.2, -0.7, -1.05]].forEach(([x, y, z]) => {
-      const cloud = new THREE.Group();
-      [[0, 0, 0, 0.14], [0.14, -0.02, 0.02, 0.1], [-0.13, -0.02, 0, 0.09]].forEach(([dx, dy, dz, r]) => {
-        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), cloudMat);
-        puff.position.set(dx, dy, dz);
-        cloud.add(puff);
-      });
-      const dir = new THREE.Vector3(x, y, z).normalize().multiplyScalar(1.38);
-      cloud.position.copy(dir);
-      cloud.lookAt(0, 0, 0);
-      earth.add(cloud);
-    });
-
-    // Tilted orbit ring of paper sheets + leaves
-    const ring = new THREE.Group();
-    const paperMat = new THREE.MeshLambertMaterial({ color: 0xfdfcf7, side: THREE.DoubleSide });
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0xb9c7b5 });
-    const leafMat = new THREE.MeshPhongMaterial({ color: 0x66bb6a, flatShading: true, side: THREE.DoubleSide });
-    const COUNT = 12, R = 1.8;
-    for (let i = 0; i < COUNT; i++) {
-      const a = (i / COUNT) * Math.PI * 2;
-      const holder = new THREE.Group();
-      holder.position.set(Math.cos(a) * R, Math.sin(a * 2) * 0.06, Math.sin(a) * R);
-      holder.rotation.y = -a;
-      if (i % 3 === 2) {
-        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 5), leafMat);
-        leaf.rotation.z = Math.PI / 2;
-        leaf.scale.set(1, 1, 0.35);
-        holder.add(leaf);
-      } else {
-        const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.46, 0.014), paperMat);
-        sheet.rotation.set(0.25, 0, (i % 2 ? 0.18 : -0.18));
-        holder.add(sheet);
-        for (let l = 0; l < 3; l++) {
-          const line = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.014, 0.004), lineMat);
-          line.position.set(0, 0.1 - l * 0.09, 0.012);
-          sheet.add(line);
-        }
-      }
-      ring.add(holder);
-    }
-    ring.rotation.set(0.32, 0, -0.38);
-    earth.add(ring);
-
-    // Thin guide halo for the ring
-    const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(R, 0.008, 6, 96),
-      new THREE.MeshBasicMaterial({ color: 0x9ed8b0, transparent: true, opacity: 0.55 })
-    );
-    halo.rotation.set(Math.PI / 2, 0, 0);
-    ring.add(halo);
-
-    earth.rotation.z = 0.18;
-    earth.scale.setScalar(0.8);
-    group.add(earth);
+    const globe = window.ProModels.globe();
+    globe.scale.setScalar(0.86);
+    globe.position.y = -0.05;
+    group.add(globe);
+    group.userData.tick = (t) => globe.userData.update(t);
   }
 
   // ==========================================================================

@@ -21,6 +21,7 @@
   <!-- Stylesheets (Core + 3D Nature Theme) -->
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/documentary.css">
 
   <!-- Hero-only background (home page only) -->
   <style>
@@ -46,7 +47,9 @@
   <!-- Client Logic & 3D Engine -->
   <script src="js/main.js" defer></script>
   <script src="js/theme.js" defer></script>
+  <script src="js/models-pro.js" defer></script>
   <script src="js/background3d.js" defer></script>
+  <script src="js/documentary.js" defer></script>
 </head>
 <body data-scene="home">
 
@@ -72,6 +75,7 @@
         <li><a href="paper-vs-digital.html" class="pill-link">Compare</a></li>
         <li><a href="solutions.html" class="pill-link">Solutions</a></li>
       <li><a href="experience.html" class="pill-link">Story</a></li>
+        <li><a href="index.html#documentary" class="pill-link">Documentary</a></li>
       </ul>
 
       <a href="index.html" class="pill-brand" aria-label="Paper &amp; Earth Home">
@@ -693,6 +697,70 @@
       </section>
 
       <!-- =======================================================================
+           DOCUMENTARY
+           ======================================================================= -->
+      <section class="doc-section theme-reveal" id="documentary" aria-labelledby="doc-heading">
+        <div class="section-intro">
+          <span class="kicker">Project Documentary</span>
+          <h2 id="doc-heading">Watch the Documentary</h2>
+          <p>An original educational documentary on where paper comes from, what it costs the planet, and how digital workflows reduce that cost.</p>
+        </div>
+
+        <div class="doc-layout">
+          <div>
+            <!-- To use Google Drive instead of an mp4: paste the file ID into data-drive-id (the part between /d/ and /view in the share link). -->
+            <div class="doc-player" id="docPlayer" data-drive-id="" data-video="assets/documentary/documentary.mp4" data-poster="assets/documentary/poster.jpg">
+              <button type="button" class="doc-poster" id="docPlay" aria-label="Play documentary">
+                <img src="assets/documentary/poster.jpg" alt="">
+                <span class="doc-play-btn">&#9654; Play Documentary</span>
+              </button>
+            </div>
+            <p class="doc-meta"><span>Duration: <strong>5:20 min</strong></span><span>Environmental Studies project</span></p>
+          </div>
+
+          <ol class="doc-chapters" aria-label="Documentary chapters">
+            <li><button type="button" class="doc-ch" data-start="0"><time>0:00</time><span><strong>The paper problem</strong><small>Forests cleared to make paper.</small></span></button></li>
+            <li><button type="button" class="doc-ch" data-start="40"><time>0:40</time><span><strong>Paper in daily life</strong><small>Classrooms and the habit of printing.</small></span></button></li>
+            <li><button type="button" class="doc-ch" data-start="80"><time>1:20</time><span><strong>Forests lost</strong><small>What logging leaves behind.</small></span></button></li>
+            <li><button type="button" class="doc-ch" data-start="120"><time>2:00</time><span><strong>Industry and emissions</strong><small>Pulp mills, water use and pollution.</small></span></button></li>
+            <li><button type="button" class="doc-ch" data-start="160"><time>2:40</time><span><strong>The digital alternative</strong><small>Cloud storage and data centers.</small></span></button></li>
+            <li><button type="button" class="doc-ch" data-start="200"><time>3:20</time><span><strong>Offices and printing</strong><small>Where paperless workflows help most.</small></span></button></li>
+            <li><button type="button" class="doc-ch" data-start="240"><time>4:00</time><span><strong>The project data</strong><small>Key impact numbers from our study.</small></span></button></li>
+            <li><button type="button" class="doc-ch" data-start="280"><time>4:40</time><span><strong>A greener future</strong><small>Cutting paper, protecting forests.</small></span></button></li>
+          </ol>
+        </div>
+
+      </section>
+
+      <!-- =======================================================================
+           REPORT ARCHIVE
+           ======================================================================= -->
+      <section class="report-section theme-reveal" id="report" aria-labelledby="report-heading">
+        <div class="section-intro">
+          <span class="kicker">Submission Archive</span>
+          <h2 id="report-heading">Read the Project Report</h2>
+          <p>Browse the submitted report page by page, or download the full file.</p>
+        </div>
+
+        <!-- Report pages: assets/report/page_1.jpg ... page_13.jpg. If you add pages, raise data-pages. -->
+        <div class="report-layout" id="reportViewer" data-pages="13" data-pattern="assets/report/page_{n}.jpg">
+          <div>
+            <div class="rp-stage"><figure id="rpStage" aria-live="polite"></figure></div>
+            <div class="rp-controls">
+              <button type="button" class="rp-btn" id="rpPrev">&larr; Previous</button>
+              <span id="rpLabel" role="status"></span>
+              <button type="button" class="rp-btn" id="rpNext">Next &rarr;</button>
+            </div>
+            <div class="rp-downloads">
+              <a class="rp-btn solid" href="assets/report/Paper-Consumption-Report.pdf" download>Download Report (PDF)</a>
+              <a class="rp-btn" href="Paper_Consumption_Digital_Age.pptx" download>Download Presentation (PPTX)</a>
+            </div>
+          </div>
+          <div class="rp-thumbs" id="rpThumbs" role="group" aria-label="Choose a report page"></div>
+        </div>
+      </section>
+
+      <!-- =======================================================================
            NEWSLETTER & SUSTAINABILITY PLEDGE BANNER
            ======================================================================= -->
       <section class="newsletter-section" id="pledge" aria-labelledby="pledge-title">
@@ -747,7 +815,7 @@
               <li><a href="calculator.html" class="footer-link">Footprint Calculator</a></li>
               <li><a href="calculator.html#quiz" class="footer-link">Sustainability Quiz</a></li>
               <li><a href="resources.html" class="footer-link">Citations &amp; Sources</a></li>
-              <li><a href="resources.html#toolkits" class="footer-link">Organization Action Toolkit</a></li>
+              <li><a href="action-plan.html" class="footer-link">Organization Action Toolkit</a></li>
             </ul>
           </div>
 

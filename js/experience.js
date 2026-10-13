@@ -9,7 +9,7 @@
 
   var canvas = document.getElementById('xpCanvas');
   if (!canvas) return;
-  if (typeof THREE === 'undefined') { showFallback(); return; }
+  if (typeof THREE === 'undefined' || !window.ProModels) { showFallback(); return; }
 
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -20,13 +20,17 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
   if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
+  var PM = window.ProModels;
 
   var scene = new THREE.Scene();
   var camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
   camera.position.set(0, 0, 7.2);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  var sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(3, 5, 6); scene.add(sun);
+  var proLook = !!(PM && PM.installLook(renderer, scene, {}));
+  scene.add(new THREE.AmbientLight(0xffffff, proLook ? 0.2 : 0.75));
+  var sun = new THREE.DirectionalLight(0xffffff, 1.0); sun.position.set(3, 5, 6); sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024); sun.shadow.camera.left = -4; sun.shadow.camera.right = 4; sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4; sun.shadow.camera.near = 1; sun.shadow.camera.far = 20; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+  scene.add(sun);
   var rim = new THREE.DirectionalLight(0x9be8b0, 0.55); rim.position.set(-4, 2, -3); scene.add(rim);
   var glow = new THREE.PointLight(0x6df0a0, 0, 12); glow.position.set(0, 0, 3); scene.add(glow);
 
@@ -95,163 +99,17 @@
     m.rotation.z = Math.PI / 2; var g = new THREE.Group(); g.add(m); return g;
   }
 
-  /* ------------------------------------------------------------------ 0 · paper ream */
-  var reamG = new THREE.Group();
-  var reamAnchors = {};
-  (function () {
-    var RW = 1.6, RD = 1.15, RH = 0.38;
-    var edgeTex = makeTex(256, 64, function (ctx, w, h) {
-      ctx.fillStyle = '#efece0'; ctx.fillRect(0, 0, w, h); ctx.strokeStyle = 'rgba(105,120,105,0.6)'; ctx.lineWidth = 1.2;
-      for (var y = 2; y < h; y += 3) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-    });
-    var topTex = makeTex(256, 192, function (ctx, w, h) {
-      ctx.fillStyle = '#f6f4ea'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#c3d0c3';
-      for (var i = 0; i < 9; i++) ctx.fillRect(24, 22 + i * 16, i % 4 === 3 ? 110 : 200, 5);
-    });
-    var edgeMat = new THREE.MeshStandardMaterial({ map: edgeTex, roughness: 0.85 });
-    var topMat = new THREE.MeshStandardMaterial({ map: topTex, roughness: 0.85 });
-    var plain = std(0xe9e6d8, { roughness: 0.9 });
-    var topStack = new THREE.Mesh(new THREE.BoxGeometry(RW, RH, RD), [edgeMat, edgeMat, topMat, plain, edgeMat, edgeMat]);
-    var botStack = new THREE.Mesh(new THREE.BoxGeometry(RW, RH, RD), [edgeMat, edgeMat, plain, plain, edgeMat, edgeMat]);
-    topStack.position.y = RH / 2; botStack.position.y = -RH / 2;
-    reamG.add(topStack, botStack);
-    var labelTex = makeTex(256, 256, function (ctx, w, h) {
-      ctx.fillStyle = '#c9a26b'; ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = '#fffaf0'; rr(ctx, 24, 56, 208, 144, 14); ctx.fill();
-      drawLeaf(ctx, 70, 112, 26, '#2e7d32');
-      ctx.fillStyle = '#1b3d1c'; ctx.font = '800 34px Arial'; ctx.fillText('500', 110, 112);
-      ctx.font = '700 20px Arial'; ctx.fillText('SHEETS \u00b7 A4', 100, 140);
-      ctx.fillStyle = '#6d5a3c'; ctx.font = '600 16px Arial'; ctx.fillText('80 GSM \u00b7 VIRGIN PULP', 40, 178);
-    });
-    var kraft = std(0xc9a26b, { roughness: 0.8 });
-    var band = new THREE.Mesh(new THREE.BoxGeometry(0.72, RH * 2 + 0.04, RD + 0.04), [kraft, kraft, kraft, kraft, new THREE.MeshStandardMaterial({ map: labelTex, roughness: 0.8 }), kraft]);
-    reamG.add(band);
-    var sprout = leafMesh(0.45, 0x66bb6a); sprout.position.set(-0.45, 0.78, 0.1); sprout.rotation.z = -0.5; reamG.add(sprout);
-    reamG.userData.sprout = sprout;
-    reamAnchors = {
-      band: new THREE.Vector3(0.15, 0.1, RD / 2 + 0.03),
-      top: new THREE.Vector3(-0.5, RH * 2 - 0.0, 0.1),
-      edge: new THREE.Vector3(RW / 2, 0.0, 0.2),
-      base: new THREE.Vector3(-0.35, -RH, RD / 2)
-    };
-    reamG.rotation.set(0.32, -0.55, 0);
-  })();
-
-  /* ------------------------------------------------------------------ 1 · forest island */
-  var forestG = new THREE.Group();
-  (function () {
-    var isle = new THREE.Group();
-    var soil = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 0.55, 0.9, 10, 1), flat(0x7a5a3a)); soil.position.y = -0.55; isle.add(soil);
-    var strata = new THREE.Mesh(new THREE.CylinderGeometry(1.46, 1.38, 0.1, 10), flat(0x5f4429)); strata.position.y = -0.14; isle.add(strata);
-    var grass = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.46, 0.16, 10), flat(0x66b05a)); grass.position.y = -0.01; isle.add(grass);
-    [[-0.85, -0.35, 1.35], [-0.2, -0.85, 1.1], [0.6, -0.55, 1.5], [1.0, 0.1, 1.0], [-1.0, 0.45, 0.95], [0.1, 0.1, 1.25], [0.75, 0.75, 0.8], [-0.35, 0.85, 0.85]].forEach(function (s) {
-      var t = makePine(s[2]); t.position.set(s[0], 0.07, s[1]); t.rotation.y = s[0] * 3; isle.add(t);
-    });
-    var capTex = new THREE.MeshStandardMaterial({ map: ringTexture(), roughness: 0.7 });
-    var stump = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.23, 0.2, 22), [flat(0x7d5233), capTex, flat(0x6b4529)]); stump.position.set(0.1, 0.17, 1.05); isle.add(stump);
-    [[0.85, 0.18, 1.05, 0.5], [0.95, 0.18, 1.3, 0.35], [0.9, 0.38, 1.18, 0.42]].forEach(function (p) { var l = makeLog(0.7, 0.11); l.position.set(p[0], p[1], p[2]); l.rotation.y = p[3]; isle.add(l); });
-    var sap = leafMesh(0.3, 0x7ad06a); sap.position.set(-0.3, 0.32, 1.15); isle.add(sap);
-    isle.scale.setScalar(0.95); isle.position.y = 0.2;
-    forestG.add(isle);
-  })();
-
-  /* ------------------------------------------------------------------ 2 · digital tablet */
-  var tabletG = new THREE.Group();
-  var tabletParts = {};
-  (function () {
-    var TW = 1.75, TH = 2.35, TD = 0.1;
-    var body = new THREE.Mesh(extrudeRound(TW, TH, 0.2, TD, 0.025), std(0xcfd8d2, { roughness: 0.38, metalness: 0.25 }));
-    tabletG.add(body);
-    var front = TD / 2 + 0.027;
-    var bezel = new THREE.Mesh(new THREE.ShapeGeometry(roundRectShape(TW - 0.06, TH - 0.06, 0.17), 18), new THREE.MeshBasicMaterial({ color: 0x10241a }));
-    bezel.position.z = front; tabletG.add(bezel);
-    var screenTex = makeTex(640, 860, function (ctx, w, h) {
-      ctx.save(); rr(ctx, 0, 0, w, h, 38); ctx.clip();
-      var g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0f2a1d'); g.addColorStop(1, '#07130d');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = '#6df0a0'; ctx.font = '700 28px Arial'; ctx.fillText('PAPERLESS OFFICE', 40, 66);
-      ctx.fillStyle = '#eafff1'; ctx.font = '800 130px Arial'; ctx.fillText('92%', 40, 230);
-      ctx.fillStyle = '#9ad6a8'; ctx.font = '600 28px Arial'; ctx.fillText('lifetime carbon cut', 44, 276);
-      ctx.fillStyle = 'rgba(109,240,160,0.12)'; rr(ctx, 36, 320, w - 72, 280, 26); ctx.fill();
-      [0.35, 0.5, 0.68, 0.82, 1.0].forEach(function (v, i) {
-        var bw = 62, x = 74 + i * 90, bh = 190 * v, y = 566 - bh;
-        ctx.fillStyle = i === 4 ? '#6df0a0' : 'rgba(109,240,160,0.5)'; rr(ctx, x, y, bw, bh, 12); ctx.fill();
-      });
-      for (var i = 0; i < 3; i++) { var y = 628 + i * 64; ctx.fillStyle = 'rgba(255,255,255,0.07)'; rr(ctx, 36, y, w - 72, 52, 16); ctx.fill(); ctx.fillStyle = '#6df0a0'; ctx.fillRect(56, y + 20, 140 - i * 20, 8); }
-      ctx.restore();
-    });
-    var screen = new THREE.Mesh(new THREE.PlaneGeometry(TW - 0.14, TH - 0.14), new THREE.MeshBasicMaterial({ map: screenTex, transparent: true }));
-    screen.position.z = front + 0.002; tabletG.add(screen);
-    function card(draw) {
-      var tex = makeTex(256, 256, function (ctx, w, h) {
-        ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
-        ctx.fillStyle = 'rgba(255,255,255,0.96)'; rr(ctx, 28, 24, 200, 200, 46); ctx.fill(); ctx.shadowColor = 'transparent'; draw(ctx);
-      });
-      return new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
-    }
-    var cCloud = card(function (ctx) {
-      ctx.fillStyle = '#e8f5e9'; ctx.beginPath(); ctx.arc(104, 128, 34, 0, 7); ctx.arc(138, 112, 40, 0, 7); ctx.arc(170, 132, 30, 0, 7); ctx.fill(); ctx.fillRect(104, 128, 66, 34);
-      ctx.strokeStyle = '#43a047'; ctx.lineWidth = 6; ctx.stroke(); drawLeaf(ctx, 138, 134, 22, '#2e7d32');
-    });
-    var cDoc = card(function (ctx) {
-      ctx.fillStyle = '#f1f8f1'; rr(ctx, 86, 70, 84, 112, 10); ctx.fill(); ctx.strokeStyle = '#43a047'; ctx.lineWidth = 6; ctx.stroke();
-      ctx.fillStyle = '#81c784'; [96, 114, 132].forEach(function (y, i) { rr(ctx, 98, y, 60 - i * 12, 7, 3); ctx.fill(); });
-      ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(160, 168, 20, 0, 7); ctx.fill();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(151, 168); ctx.lineTo(158, 175); ctx.lineTo(170, 160); ctx.stroke();
-    });
-    var cChart = card(function (ctx) {
-      [[84, 40], [114, 70], [144, 100]].forEach(function (a, i) { ctx.fillStyle = ['#a5d6a7', '#66bb6a', '#2e7d32'][i]; rr(ctx, a[0], 180 - a[1], 22, a[1], 7); ctx.fill(); });
-      ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(84, 98); ctx.lineTo(120, 80); ctx.lineTo(170, 56); ctx.stroke();
-    });
-    var cards = [
-      { m: cCloud, b: new THREE.Vector3(-1.5, 0.9, 0.6), p: 0 },
-      { m: cDoc, b: new THREE.Vector3(1.55, -0.5, 0.8), p: 1.7 },
-      { m: cChart, b: new THREE.Vector3(-1.35, -1.0, 0.95), p: 3.1 }
-    ];
-    cards.forEach(function (c) { c.m.position.copy(c.b); tabletG.add(c.m); });
-    tabletParts.cards = cards;
-    tabletG.scale.setScalar(0.95);
-  })();
-
-  /* ------------------------------------------------------------------ 3 · globe with paper ring */
-  var globeG = new THREE.Group();
-  (function () {
-    function landNoise(x, y, z) {
-      return Math.sin(x * 2.3 + 1.3) * Math.cos(y * 2.6 + 0.4) + Math.sin(z * 2.9 + 0.5) * Math.cos(x * 1.8 + y * 1.2) * 0.8 + Math.sin((x + z) * 4.1) * 0.25;
-    }
-    var geo = new THREE.IcosahedronGeometry(1.15, 4), pos = geo.attributes.position;
-    var colors = new Float32Array(pos.count * 3), v = new THREE.Vector3(), c = new THREE.Color();
-    var oA = new THREE.Color(0x1d6fa3), oB = new THREE.Color(0x2b8fbf), lA = new THREE.Color(0x1f6b2a), lB = new THREE.Color(0x4f9e45), sand = new THREE.Color(0xc9d98a);
-    for (var i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i).normalize();
-      var n = landNoise(v.x, v.y, v.z);
-      if (Math.abs(v.y) > 0.9) { c.set(0xf4fbf6); v.multiplyScalar(1.165); }
-      else if (n > 0.18) { var t = Math.min(1, (n - 0.18)); c.copy(lA).lerp(lB, t); if (n < 0.3) c.lerp(sand, 0.55); v.multiplyScalar(1.18 + t * 0.05); }
-      else { c.copy(oA).lerp(oB, (n + 1.5) / 1.7 * 0.6); v.multiplyScalar(1.15); }
-      pos.setXYZ(i, v.x, v.y, v.z); colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3)); geo.computeVertexNormals();
-    var globe = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 10, specular: 0x1a2a22 }));
-    globeG.add(globe);
-    globeG.add(new THREE.Mesh(new THREE.SphereGeometry(1.34, 32, 32), new THREE.MeshBasicMaterial({ color: 0xbfeedd, transparent: true, opacity: 0.18, side: THREE.BackSide })));
-    var ring = new THREE.Group();
-    var paperMat = std(0xfdfcf7, { roughness: 0.8 }); paperMat.side = THREE.DoubleSide;
-    var lineMat = new THREE.MeshBasicMaterial({ color: 0xb9c7b5 });
-    var N = 14, R = 2.0;
-    for (var k = 0; k < N; k++) {
-      var a = (k / N) * Math.PI * 2, holder = new THREE.Group();
-      holder.position.set(Math.cos(a) * R, Math.sin(a * 2) * 0.07, Math.sin(a) * R); holder.rotation.y = -a;
-      if (k % 3 === 2) { var lf = leafMesh(0.45, 0x66bb6a); lf.rotation.z = 1.2; holder.add(lf); }
-      else {
-        var sheet = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.48, 0.014), paperMat); sheet.rotation.set(0.25, 0, k % 2 ? 0.18 : -0.18);
-        for (var l = 0; l < 3; l++) { var ln = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.014, 0.004), lineMat); ln.position.set(0, 0.1 - l * 0.09, 0.012); sheet.add(ln); }
-        holder.add(sheet);
-      }
-      ring.add(holder);
-    }
-    ring.rotation.set(0.32, 0, -0.38); globeG.add(ring); globeG.userData.ring = ring;
-    globeG.rotation.z = 0.18;
-  })();
+  /* ------------------------------------------------------------------ the four hero objects (ProModels) */
+  var reamG = PM.ream(), forestG = PM.forestIsland(), tabletG = PM.tablet(), globeG = PM.globe();
+  var reamDims = reamG.userData.dims, reamAnchors = {
+    band: new THREE.Vector3(0.2, 0.05, reamDims.RD / 2 + 0.05),
+    top: new THREE.Vector3(-0.35, reamDims.RH + 0.22, 0.05),
+    edge: new THREE.Vector3(reamDims.RW / 2, 0.0, 0.2),
+    base: new THREE.Vector3(-0.35, -reamDims.RH, reamDims.RD / 2)
+  };
+  reamG.rotation.set(0.32, -0.55, 0);
+  var tabletParts = { cards: tabletG.userData.parts.floatCards.map(function (c) { return { m: c.mesh, b: c.base, p: c.phase }; }) };
+  tabletG.userData.parts.screen.scale.setScalar(1);
 
   /* ------------------------------------------------------------------ dark-scene particles */
   var particles;
@@ -266,9 +124,9 @@
   })();
 
   var objs = [reamG, forestG, tabletG, globeG];
-  objs.forEach(function (o) { o.scale.multiplyScalar(0.0001); scene.add(o); });
+  objs.forEach(function (o) { o.scale.multiplyScalar(0.0001); scene.add(o); if (PM) PM.applyLook(o); });
   var baseScale = [1.0, 1.0, 1.0, 1.0];
-  var baseS = objs.map(function (o) { return o === tabletG ? 1.2 : (o === forestG ? 1.2 : 1); });
+  var baseS = objs.map(function (o) { return o === tabletG ? 1.18 : (o === forestG ? 1.12 : (o === globeG ? 1.05 : 1.05)); });
 
   /* ------------------------------------------------------------------ layout + loop */
   var W = 1, H = 1, isMobile = false;
@@ -369,16 +227,13 @@
       o.scale.setScalar(sc);
       o.visible = w > 0.01;
       o.position.set(posX, posY + Math.sin(t * 1.4 + i) * 0.06, 0);
-      var spin = (i === 2) ? Math.sin(t * 0.6) * 0.4 : t * 0.32 + cur * 1.4;
+      var spin = (i === 2) ? Math.sin(t * 0.6) * 0.55 : t * 0.32 + cur * 1.4;
       o.rotation.y = (i === 0 ? -0.55 : 0) + spin + mx * 0.8 + (1 - w) * (i < cur ? -2.2 : 2.2);
       o.rotation.x = (i === 0 ? 0.32 : 0.1) + my * 0.4;
     });
 
     // per-object life
-    reamG.userData.sprout.rotation.y = t * 1.4;
-    var cds = tabletParts.cards;
-    for (var k = 0; k < cds.length; k++) cds[k].m.position.y = cds[k].b.y + Math.sin(t * 1.4 + cds[k].p) * 0.07;
-    globeG.userData.ring.rotation.y = t * 0.5;
+    reamG.userData.update(t); forestG.userData.update(t); tabletG.userData.update(t); globeG.userData.update(t);
 
     // dark scene extras
     var dark = smooth(1 - Math.abs(cur - 2) * 1.2);

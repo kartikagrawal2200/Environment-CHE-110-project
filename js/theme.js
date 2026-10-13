@@ -140,15 +140,26 @@
   const pillLinks = document.getElementById('pillNavLinks');
 
   if (mobileToggle && pillLinks) {
+    const allLinkLists = document.querySelectorAll('.pill-links');
+    const leftList = document.querySelector('.pill-links-left');
+    const setMenu = (open) => {
+      allLinkLists.forEach(l => l.classList.toggle('is-open', open));
+      // stack the right-hand list underneath the left-hand one
+      pillLinks.style.top = (open && leftList && leftList !== pillLinks) ? (60 + leftList.offsetHeight + 10) + 'px' : '';
+      mobileToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
     mobileToggle.addEventListener('click', () => {
-      pillLinks.classList.toggle('is-open');
+      setMenu(!pillLinks.classList.contains('is-open'));
     });
 
     document.addEventListener('click', (e) => {
-      if (!pillLinks.contains(e.target) && !mobileToggle.contains(e.target)) {
-        pillLinks.classList.remove('is-open');
-      }
+      const insideMenu = Array.from(allLinkLists).some(l => l.contains(e.target));
+      if (!insideMenu && !mobileToggle.contains(e.target)) setMenu(false);
     });
+
+    // close the menu after choosing a link (e.g. the in-page Documentary link)
+    allLinkLists.forEach(l => l.addEventListener('click', (e) => { if (e.target.closest('a')) setMenu(false); }));
   }
 
   // ==========================================================================

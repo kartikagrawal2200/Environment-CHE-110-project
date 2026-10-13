@@ -2342,3 +2342,39 @@ body[data-scene="404"] .hero-404 {
   .pill-brand span { display: none; }
   .pill-cta { padding: 6px 9px; font-size: 0.68rem; }
 }
+
+/* =====================================================================
+   READABILITY + MOBILE NAV FIXES
+   ===================================================================== */
+h1, h2, h3, h4, h5, h6 { font-weight: 600; letter-spacing: 0; }
+.hero-title,
+.hero-header-inner .hero-title {
+  font-weight: 600;
+  font-size: clamp(2rem, 3.8vw, 3.05rem);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.section-intro h2, #topics-heading { font-weight: 600; }
+.inner-hero-text h1,
+[data-theme="dark"] .inner-hero-text h1 {
+  font-weight: 600 !important;
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  line-height: 1.25;
+}
+.topic-card .card-title,
+[data-theme="dark"] .topic-card .card-title { font-weight: 600 !important; }
+
+@media (max-width: 992px) {
+  .pill-mobile-toggle { flex: 0 0 auto; }
+}
+@media (max-width: 640px) {
+  .pill-cta { display: none; }
+  .hero-title,
+  .hero-header-inner .hero-title { font-size: 1.75rem; line-height: 1.25; }
+  .inner-hero-text h1 { font-size: 1.6rem; }
+  .section-intro h2, #topics-heading { font-size: 1.6rem; }
+}
+
+@media (max-width: 992px) {
+  html:not([data-theme="dark"]) .pill-links { background: #ffffff; backdrop-filter: none; }
+}
